@@ -47,6 +47,18 @@ spring:
                     redis-rate-limiter.replenishRate: 50
                     redis-rate-limiter.burstCapacity: 100
                     redis-rate-limiter.requestedTokens: 1
+            # Signed upload/download links of the local development object storage.
+            - id: identity-storage
+              uri: ${IDENTITY_SERVICE_URL:http://localhost:8081}
+              predicates:
+                - Path=/api/v1/storage/objects/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@clientIpKeyResolver}"
+                    redis-rate-limiter.replenishRate: 10
+                    redis-rate-limiter.burstCapacity: 20
+                    redis-rate-limiter.requestedTokens: 1
             # Later phases add catalog, commerce, payment, trust, search and recommendation routes here.
 
 bigbazaar:

@@ -28,6 +28,9 @@ spring:
       acks: all
       properties:
         enable.idempotence: true
+  servlet:
+    multipart:
+      enabled: false
   data:
     web:
       pageable:
@@ -46,6 +49,22 @@ bigbazaar:
     challenge-ttl: 5m
     max-challenge-attempts: 5
     recovery-code-count: 10
+  storage:
+    provider: ${STORAGE_PROVIDER:local}
+    cleanup-interval: 1h
+    local:
+      directory: ${STORAGE_LOCAL_DIR:./data/uploads}
+      public-base-url: ${STORAGE_PUBLIC_BASE_URL:http://localhost:8080}
+      signing-key: ${STORAGE_SIGNING_KEY:}
+    s3:
+      bucket: ${S3_BUCKET:}
+      region: ${S3_REGION:ap-south-1}
+      endpoint: ${S3_ENDPOINT:}
+      public-endpoint: ${S3_PUBLIC_ENDPOINT:}
+      access-key: ${S3_ACCESS_KEY:}
+      secret-key: ${S3_SECRET_KEY:}
+      path-style: ${S3_PATH_STYLE:false}
+      create-bucket: ${S3_CREATE_BUCKET:false}
   login:
     max-failed-attempts: 5
     lock-duration: 15m

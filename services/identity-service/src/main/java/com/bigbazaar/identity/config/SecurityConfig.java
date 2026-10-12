@@ -55,6 +55,8 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/.well-known/jwks.json").permitAll()
+                        // Local dev storage links: the HMAC signature in the URL is the authorization.
+                        .requestMatchers("/api/v1/storage/objects/**").permitAll()
                         // Admin actions need a token from a login that passed MFA.
                         .requestMatchers("/api/v1/admin/**").access(AuthorizationManagers.allOf(
                                 AuthorityAuthorizationManager.hasRole("ADMIN"),

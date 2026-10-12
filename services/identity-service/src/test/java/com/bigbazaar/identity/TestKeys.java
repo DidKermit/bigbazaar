@@ -14,6 +14,15 @@ public final class TestKeys {
 
     public static final Path PRIVATE_KEY = writePrivateKey();
     public static final String MFA_KEY = randomBase64(32);
+    public static final Path STORAGE_DIR = tempDir();
+
+    private static Path tempDir() {
+        try {
+            return Files.createTempDirectory("storage-test-");
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
 
     private static Path writePrivateKey() {
         try {

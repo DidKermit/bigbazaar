@@ -3,6 +3,7 @@ package com.bigbazaar.identity;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -49,6 +50,9 @@ class IdentityFlowIntegrationTest {
     static void keys(DynamicPropertyRegistry registry) {
         registry.add("bigbazaar.jwt.private-key-location", () -> "file:" + TestKeys.PRIVATE_KEY);
         registry.add("bigbazaar.mfa.encryption-key", () -> TestKeys.MFA_KEY);
+        registry.add("bigbazaar.storage.provider", () -> "local");
+        registry.add("bigbazaar.storage.local.directory", () -> TestKeys.STORAGE_DIR.toString());
+        registry.add("bigbazaar.storage.local.public-base-url", () -> "http://gateway.test");
     }
 
     @Autowired MockMvc mvc;
@@ -308,6 +312,111 @@ class IdentityFlowIntegrationTest {
                 .andExpect(status().isNoContent());
         refresh(refreshed.get("refreshToken").asString(), 401);
         assertThat(login(email, "Secret1234").get("status").asString()).isEqualTo("AUTHENTICATED");
+    }
+
+    @Test
+    void sellerUploadsKycDocumentAndAdminCanViewIt() throws Exception {
+        String email = "docs+" + UUID.randomUUID() + "@example.com";
+        register(email);
+        String access = login(email, "Secret1234").get("accessToken").asString();
+        MvcResult applied = mvc.perform(post("/api/v1/sellers/applications").header("Authorization", "Bearer " + access)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body(Map.of("businessName", "Docs Shop", "businessEmail", "docs@example.com",
+                                "businessPhone", "9876543210", "pickupAddress", "1 Park Street, Kolkata"))))
+                .andExpect(status().isCreated()).andReturn();
+        String sellerId = json.readTree(applied.getResponse().getContentAsString()).get("id").asString();
+
+        byte[] pdf = "%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF".getBytes();
+        JsonNode upload = requestUpload(access, "GST_CERTIFICATE", "application/pdf", pdf.length, "../../gst.pdf");
+        String documentId = upload.get("document").get("id").asString();
+        assertThat(upload.get("document").get("status").asString()).isEqualTo("PENDING_UPLOAD");
+        assertThat(upload.get("document").get("fileName").asString()).isEqualTo("gst.pdf");
+        String uploadUrl = upload.get("upload").get("url").asString();
+        assertThat(uploadUrl).startsWith("http://gateway.test/api/v1/storage/objects/sellers/" + sellerId + "/");
+
+        // Confirming before the file arrives is refused
+        mvc.perform(post("/api/v1/sellers/me/documents/{id}/confirm", documentId)
+                        .header("Authorization", "Bearer " + access))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("UPLOAD_NOT_FOUND"));
+
+        // The signed link refuses a different content type or a tampered signature
+        mvc.perform(put(localPath(uploadUrl)).contentType("text/html").content(pdf)).andExpect(status().isForbidden());
+        mvc.perform(put(java.net.URI.create(localPath(uploadUrl).toString().replace("&sig=", "&sig=x"))).contentType("application/pdf").content(pdf))
+                .andExpect(status().isForbidden());
+
+        mvc.perform(put(localPath(uploadUrl)).contentType("application/pdf").content(pdf)).andExpect(status().isOk());
+        mvc.perform(post("/api/v1/sellers/me/documents/{id}/confirm", documentId)
+                        .header("Authorization", "Bearer " + access))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UPLOADED"));
+
+        // A file pretending to be a PDF is rejected and deleted
+        byte[] fake = "MZ-not-really-a-pdf".getBytes();
+        JsonNode fakeUpload = requestUpload(access, "PAN", "application/pdf", fake.length, "pan.pdf");
+        mvc.perform(put(localPath(fakeUpload.get("upload").get("url").asString()))
+                        .contentType("application/pdf").content(fake))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/v1/sellers/me/documents/{id}/confirm",
+                        fakeUpload.get("document").get("id").asString())
+                        .header("Authorization", "Bearer " + access))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("INVALID_DOCUMENT"));
+
+        // Unsupported types and oversized files are refused up front
+        mvc.perform(post("/api/v1/sellers/me/documents/uploads").header("Authorization", "Bearer " + access)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body(Map.of("documentType", "PAN", "contentType", "application/zip",
+                                "sizeBytes", 100))))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/v1/sellers/me/documents/uploads").header("Authorization", "Bearer " + access)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body(Map.of("documentType", "PAN", "contentType", "application/pdf",
+                                "sizeBytes", 11 * 1024 * 1024))))
+                .andExpect(status().isBadRequest());
+
+        // Another seller can't touch it
+        String otherEmail = "other+" + UUID.randomUUID() + "@example.com";
+        register(otherEmail);
+        String other = login(otherEmail, "Secret1234").get("accessToken").asString();
+        mvc.perform(get("/api/v1/sellers/me/documents/{id}/link", documentId).header("Authorization", "Bearer " + other))
+                .andExpect(status().isNotFound());
+
+        // Admin sees both documents with their status and can open the valid one
+        String admin = adminAccessToken();
+        mvc.perform(get("/api/v1/admin/sellers/{id}", sellerId).header("Authorization", "Bearer " + admin))
+                .andExpect(jsonPath("$.documents.length()").value(2))
+                .andExpect(jsonPath("$.documents[0].status").value("UPLOADED"))
+                .andExpect(jsonPath("$.documents[1].status").value("INVALID"));
+        MvcResult link = mvc.perform(get("/api/v1/admin/sellers/{s}/documents/{d}/link", sellerId, documentId)
+                        .header("Authorization", "Bearer " + admin))
+                .andExpect(status().isOk()).andReturn();
+        String viewUrl = json.readTree(link.getResponse().getContentAsString()).get("url").asString();
+        MvcResult file = mvc.perform(get(localPath(viewUrl)))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/pdf"))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andReturn();
+        assertThat(file.getResponse().getContentAsByteArray()).isEqualTo(pdf);
+        // ...and the upload link can't be reused to read it
+        mvc.perform(get(localPath(uploadUrl))).andExpect(status().isForbidden());
+    }
+
+    private JsonNode requestUpload(String access, String type, String contentType, long size, String fileName)
+            throws Exception {
+        MvcResult result = mvc.perform(post("/api/v1/sellers/me/documents/uploads")
+                        .header("Authorization", "Bearer " + access)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body(Map.of("documentType", type, "contentType", contentType, "sizeBytes", size,
+                                "fileName", fileName))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return json.readTree(result.getResponse().getContentAsString());
+    }
+
+    /** The link points at the gateway; MockMvc talks to identity directly, so keep only path and query. */
+    private static java.net.URI localPath(String url) {
+        return java.net.URI.create(url.substring("http://gateway.test".length()));
     }
 
     @Test
