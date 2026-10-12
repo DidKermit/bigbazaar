@@ -38,11 +38,15 @@ public class RefreshToken {
     @Column(name = "replaced_by_id")
     private UUID replacedById;
 
+    @Column(name = "mfa_verified", nullable = false)
+    private boolean mfaVerified;
+
     protected RefreshToken() {
     }
 
-    RefreshToken(UUID userId, UUID familyId, String tokenHash, Instant now, Instant expiresAt) {
+    RefreshToken(UUID userId, UUID familyId, String tokenHash, Instant now, Instant expiresAt, boolean mfaVerified) {
         this.id = UUID.randomUUID();
+        this.mfaVerified = mfaVerified;
         this.userId = userId;
         this.familyId = familyId;
         this.tokenHash = tokenHash;
@@ -80,6 +84,10 @@ public class RefreshToken {
 
     public UUID getFamilyId() {
         return familyId;
+    }
+
+    public boolean isMfaVerified() {
+        return mfaVerified;
     }
 
     public String getRevokeReason() {

@@ -8,11 +8,18 @@ Publishes to the `identity-events` topic.
 | Method | Path | Who | Purpose | SRS |
 |---|---|---|---|---|
 | POST | `/auth/register` | public | Create a customer account | FR-AUTH-01, 02 |
-| POST | `/auth/login` | public | Email + password to access and refresh tokens | FR-AUTH-03 |
+| POST | `/auth/login` | public | Email + password. Returns tokens, or an MFA challenge when MFA is on | FR-AUTH-03 |
+| POST | `/auth/mfa/verify` | public | Challenge + authenticator code (or recovery code) to tokens | |
 | POST | `/auth/refresh` | public | Rotate a refresh token | FR-AUTH-04 |
 | POST | `/auth/logout` | public | Revoke a refresh token's chain | FR-AUTH-04 |
 | GET | `/users/me` | any user | Profile and roles | FR-AUTH-05 |
 | GET/POST/DELETE | `/users/me/addresses` | any user | Address book (soft delete) | |
+| GET | `/users/me/mfa` | any user | MFA status and recovery codes left | |
+| POST | `/users/me/mfa/totp/setup` | any user | Password-confirmed; returns secret + `otpauth://` URI for the QR | |
+| POST | `/users/me/mfa/totp/activate` | any user | First code from the app; enables MFA, returns 10 recovery codes once | |
+| POST | `/users/me/mfa/recovery-codes` | any user | Replace recovery codes (needs a current code) | |
+| POST | `/users/me/mfa/disable` | any user | Password + code; signs out every session | |
+| GET | `/.well-known/jwks.json` | public | Public signing key(s) for token verification | |
 | POST | `/sellers/applications` | customer | Apply, or re-apply after rejection | FR-SELLER-01 |
 | GET | `/sellers/me` | applicant | Application, documents, status history | FR-SELLER-05 |
 | POST | `/sellers/me/documents` | applicant | Register an uploaded KYC document | |
@@ -21,6 +28,10 @@ Publishes to the `identity-events` topic.
 | POST | `/admin/sellers/{id}/decisions` | admin | `START_REVIEW`, `APPROVE`, `REJECT`, `SUSPEND`, `REINSTATE` + reason | FR-SELLER-02 |
 | POST | `/admin/users/{id}/suspend` | admin | Suspend + revoke all sessions | FR-AUTH-06 |
 | POST | `/admin/users/{id}/reactivate` | admin | Reactivate | |
+| POST | `/admin/users/{id}/mfa/reset` | admin | Remove a user's MFA after an identity check, with a reason | |
+
+Every `/admin/**` call needs an admin token whose `amr` claim includes `mfa`. An admin who logged in
+with only a password gets `403 MFA_REQUIRED` and should enroll an authenticator app.
 
 OpenAPI: `/v3/api-docs`, Swagger UI: `/swagger-ui.html`. Example calls: [`../../http/phase1.http`](../../http/phase1.http).
 
@@ -41,7 +52,8 @@ grants the `SELLER` role; suspension removes it.
 
 ## Events (`identity-events`, key = aggregate id)
 
-`UserRegistered`, `UserSuspended`, `UserReactivated`, `SellerApplicationSubmitted`,
+`UserRegistered`, `UserSuspended`, `UserReactivated`, `MfaEnabled`, `MfaDisabled`, `MfaReset`,
+`SellerApplicationSubmitted`,
 `SellerReviewStarted`, `SellerApproved`, `SellerRejected`, `SellerSuspended`, `SellerReinstated`.
 Catalog will build its `approved_seller_projection` from the seller events; the audit service will
 record all of them.
@@ -50,7 +62,13 @@ record all of them.
 
 - Passwords: BCrypt, strength 12. Unknown emails still run a hash comparison so timing doesn't leak
   which emails are registered.
-- Access token: HS256 JWT, 15 minutes, claims `sub`, `email`, `roles`, `iss`.
+- Access token: RS256 JWT, 15 minutes, claims `sub`, `email`, `roles`, `amr`, `iss`; header `kid`
+  is the key's RFC 7638 thumbprint. Only this service holds the private key.
+- Refresh tokens remember whether the login passed MFA, so refreshed access tokens keep the same `amr`.
+- MFA: TOTP (RFC 6238, SHA-1, 6 digits, 30 s, plus or minus one step). Secrets are AES-256-GCM encrypted
+  and bound to the user ID. A used time step can't be reused. A login challenge lasts 5 minutes and
+  dies after 5 wrong codes. Recovery codes are 80-bit, single-use and stored as SHA-256.
+- MFA is required for admin actions, offered to everyone else. Setup and disable need the password.
 - Refresh token: 256-bit random, stored as SHA-256, 14 days, rotated on every use. Reusing a rotated
   token revokes the whole chain.
 - Lockout: 5 wrong passwords lock the account for 15 minutes. Per-IP limits are at the gateway.
@@ -70,7 +88,8 @@ record all of them.
 
 | Variable | Default | |
 |---|---|---|
-| `JWT_SECRET` | none, required | 32+ bytes, shared with the gateway |
+| `JWT_PRIVATE_KEY_PATH` | `file:infra/keys/jwt-private.pem` | PKCS#8 RSA key, 2048+ bits |
+| `MFA_ENCRYPTION_KEY` | none, required | base64 of 32 bytes |
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | local `identity_db` | |
 | `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | |
 | `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD` | empty | creates the first admin |

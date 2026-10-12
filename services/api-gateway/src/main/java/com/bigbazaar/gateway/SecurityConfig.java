@@ -1,9 +1,6 @@
 package com.bigbazaar.gateway;
 
 import com.bigbazaar.common.web.ApiError;
-import java.nio.charset.StandardCharsets;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -11,7 +8,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
-import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusReactiveJwtDecoder;
 import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
@@ -54,15 +51,15 @@ public class SecurityConfig {
                 .build();
     }
 
+    /**
+     * Verifies RS256 tokens with identity's published public keys. Keys are fetched on first use and
+     * cached; an unknown key ID triggers a refetch, so identity can rotate keys without a gateway restart.
+     */
     @Bean
-    ReactiveJwtDecoder jwtDecoder(@Value("${bigbazaar.jwt.secret}") String secret,
+    ReactiveJwtDecoder jwtDecoder(@Value("${bigbazaar.jwt.jwk-set-uri}") String jwkSetUri,
                                   @Value("${bigbazaar.jwt.issuer}") String issuer) {
-        if (secret == null || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
-            throw new IllegalStateException("bigbazaar.jwt.secret must be at least 32 bytes (set JWT_SECRET)");
-        }
-        SecretKey key = new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
-        NimbusReactiveJwtDecoder decoder = NimbusReactiveJwtDecoder.withSecretKey(key)
-                .macAlgorithm(MacAlgorithm.HS256)
+        NimbusReactiveJwtDecoder decoder = NimbusReactiveJwtDecoder.withJwkSetUri(jwkSetUri)
+                .jwsAlgorithm(SignatureAlgorithm.RS256)
                 .build();
         decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(issuer));
         return decoder;

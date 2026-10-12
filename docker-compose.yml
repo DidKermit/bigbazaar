@@ -1,13 +1,13 @@
 # Local development stack (SRS 14.1).
 #   Infrastructure only:   docker compose up -d
-#   Plus Phase 1 services: docker compose --profile app up -d --build
+#   Plus Phase 1 services: infra/keys/generate-dev-keys.sh, then docker compose --profile app up -d --build
 #   Plus tools (Kafka UI): add --profile tools
 #   OpenSearch (phase 4):  add --profile search
 name: bigbazaar
 
 x-service-env: &service-env
-  JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env (see .env.example)}
   JWT_ISSUER: bigbazaar-identity
+  JWT_JWK_SET_URI: http://identity-service:8081/.well-known/jwks.json
   KAFKA_BOOTSTRAP_SERVERS: kafka:9092
 
 services:
@@ -86,6 +86,11 @@ services:
       DB_PASSWORD: identity_svc_dev
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      JWT_PRIVATE_KEY_PATH: file:/run/secrets/jwt-private.pem
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?run infra/keys/generate-dev-keys.sh and set MFA_ENCRYPTION_KEY in .env}
+    volumes:
+      # Only identity-service gets the private key; everyone else uses the public JWKS.
+      - ./infra/keys/jwt-private.pem:/run/secrets/jwt-private.pem:ro
     ports: ["8081:8081"]
     depends_on:
       postgres:

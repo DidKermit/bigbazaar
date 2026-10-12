@@ -36,9 +36,16 @@ spring:
 bigbazaar:
   jwt:
     issuer: ${JWT_ISSUER:bigbazaar-identity}
-    secret: ${JWT_SECRET}
+    # PKCS#8 RSA key; only identity-service holds it. Public keys: /.well-known/jwks.json
+    private-key-location: ${JWT_PRIVATE_KEY_PATH:file:infra/keys/jwt-private.pem}
     access-token-ttl: ${JWT_ACCESS_TTL:15m}
     refresh-token-ttl: ${JWT_REFRESH_TTL:14d}
+  mfa:
+    encryption-key: ${MFA_ENCRYPTION_KEY:}
+    issuer-name: BigBazaar
+    challenge-ttl: 5m
+    max-challenge-attempts: 5
+    recovery-code-count: 10
   login:
     max-failed-attempts: 5
     lock-duration: 15m

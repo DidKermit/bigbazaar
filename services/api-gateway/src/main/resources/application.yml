@@ -52,7 +52,7 @@ spring:
 bigbazaar:
   jwt:
     issuer: ${JWT_ISSUER:bigbazaar-identity}
-    secret: ${JWT_SECRET}
+    jwk-set-uri: ${JWT_JWK_SET_URI:http://localhost:8081/.well-known/jwks.json}
 
 management:
   endpoints:

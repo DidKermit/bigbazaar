@@ -1,5 +1,7 @@
 package com.bigbazaar.identity.web;
 
+import com.bigbazaar.identity.mfa.MfaDtos.AdminResetRequest;
+import com.bigbazaar.identity.mfa.MfaService;
 import com.bigbazaar.identity.seller.SellerDtos.SellerDecisionRequest;
 import com.bigbazaar.identity.seller.SellerDtos.SellerDetailResponse;
 import com.bigbazaar.identity.seller.SellerDtos.SellerResponse;
@@ -13,6 +15,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
+import org.springframework.http.HttpStatus;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
@@ -25,20 +28,23 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/admin")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasRole('ADMIN') and hasAuthority('AMR_MFA')")
 @Tag(name = "Admin")
 public class AdminController {
 
     private final SellerService sellerService;
     private final UserService userService;
+    private final MfaService mfaService;
 
-    public AdminController(SellerService sellerService, UserService userService) {
+    public AdminController(SellerService sellerService, UserService userService, MfaService mfaService) {
         this.sellerService = sellerService;
         this.userService = userService;
+        this.mfaService = mfaService;
     }
 
     @GetMapping("/sellers")
@@ -77,5 +83,15 @@ public class AdminController {
         UUID adminId = CurrentUser.id(jwt);
         userService.requireActive(adminId);
         return userService.reactivate(userId, request.reason().trim(), adminId);
+    }
+
+    @PostMapping("/users/{userId}/mfa/reset")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "Remove a user's MFA after identity checks, e.g. lost phone and recovery codes")
+    public void resetMfa(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID userId,
+                         @Valid @RequestBody AdminResetRequest request) {
+        UUID adminId = CurrentUser.id(jwt);
+        userService.requireActive(adminId);
+        mfaService.adminReset(userId, request.reason().trim(), adminId);
     }
 }

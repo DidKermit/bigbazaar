@@ -7,7 +7,9 @@ can sit behind a load balancer.
 
 - **Routing**: `/api/v1/auth/**`, `/users/**`, `/sellers/**`, `/admin/**` go to identity-service.
   Later phases add their routes in `application.yml`.
-- **Authentication boundary**: requests under `/api/**` need a valid JWT (signature, expiry, issuer)
+- **Authentication boundary**: requests under `/api/**` need a valid RS256 JWT, checked against
+  identity's public keys from `/.well-known/jwks.json` (fetched lazily, cached, refetched on an
+  unknown `kid`). Signature, expiry and issuer are checked
   except `POST /api/v1/auth/**`. Anything outside `/api/**` and health is denied. Services re-check
   the token and do role and ownership checks themselves.
 - **Rate limiting** (Redis token bucket): auth endpoints 5 req/s per IP with bursts of 10;
@@ -24,8 +26,9 @@ can sit behind a load balancer.
 | Redis down | The rate limiter fails open and logs an error, so traffic keeps flowing unthrottled. |
 | Identity down | Routed calls return 5xx; public health stays up. |
 | Bad or expired token | 401 with the standard error body and correlation ID. |
+| Identity down when keys aren't cached yet | Authenticated calls fail until the JWKS can be fetched. |
 
 ## Configuration
 
-`JWT_SECRET` (required, same as identity), `JWT_ISSUER`, `REDIS_HOST`, `REDIS_PORT`,
+`JWT_JWK_SET_URI` (identity's JWKS URL), `JWT_ISSUER`, `REDIS_HOST`, `REDIS_PORT`,
 `IDENTITY_SERVICE_URL`, `CORS_ALLOWED_ORIGINS`.

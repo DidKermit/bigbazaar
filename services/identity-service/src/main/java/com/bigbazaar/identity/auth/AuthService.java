@@ -2,17 +2,23 @@ package com.bigbazaar.identity.auth;
 
 import com.bigbazaar.common.events.Topics;
 import com.bigbazaar.identity.auth.AuthDtos.LoginRequest;
+import com.bigbazaar.identity.auth.AuthDtos.LoginResponse;
+import com.bigbazaar.identity.auth.AuthDtos.MfaVerifyRequest;
 import com.bigbazaar.identity.auth.AuthDtos.RegisterRequest;
 import com.bigbazaar.identity.auth.AuthDtos.RegisteredUser;
 import com.bigbazaar.identity.auth.AuthDtos.TokenResponse;
 import com.bigbazaar.identity.common.BusinessException;
 import com.bigbazaar.identity.common.ErrorCode;
 import com.bigbazaar.identity.common.IdentityEvents;
+import com.bigbazaar.identity.common.TokenHasher;
+import com.bigbazaar.identity.mfa.MfaService;
 import com.bigbazaar.identity.outbox.OutboxWriter;
+import com.bigbazaar.identity.user.Role;
 import com.bigbazaar.identity.user.User;
 import com.bigbazaar.identity.user.UserRepository;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,12 +30,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuthService {
 
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+    /** Roles whose privileged actions require a login that passed MFA. */
+    private static final Set<Role> MFA_REQUIRED_ROLES = Set.of(Role.ADMIN, Role.SUPPORT);
 
     private final UserRepository users;
     private final RefreshTokenRepository refreshTokens;
     private final PasswordEncoder passwordEncoder;
     private final AccessTokenIssuer accessTokenIssuer;
     private final OutboxWriter outbox;
+    private final MfaService mfaService;
     private final JwtProperties jwtProperties;
     private final LoginProtectionProperties loginProtection;
     private final Clock clock;
@@ -37,13 +46,15 @@ public class AuthService {
     private final String dummyHash;
 
     public AuthService(UserRepository users, RefreshTokenRepository refreshTokens, PasswordEncoder passwordEncoder,
-                       AccessTokenIssuer accessTokenIssuer, OutboxWriter outbox, JwtProperties jwtProperties,
+                       AccessTokenIssuer accessTokenIssuer, OutboxWriter outbox, MfaService mfaService,
+                       JwtProperties jwtProperties,
                        LoginProtectionProperties loginProtection, Clock clock) {
         this.users = users;
         this.refreshTokens = refreshTokens;
         this.passwordEncoder = passwordEncoder;
         this.accessTokenIssuer = accessTokenIssuer;
         this.outbox = outbox;
+        this.mfaService = mfaService;
         this.jwtProperties = jwtProperties;
         this.loginProtection = loginProtection;
         this.clock = clock;
@@ -67,7 +78,7 @@ public class AuthService {
 
     // noRollbackFor: a wrong password must still persist the failed-attempt counter.
     @Transactional(noRollbackFor = BusinessException.class)
-    public TokenResponse login(LoginRequest request) {
+    public LoginResponse login(LoginRequest request) {
         Instant now = clock.instant();
         User user = users.findActiveByEmail(request.email()).orElse(null);
         if (user == null) {
@@ -85,7 +96,24 @@ public class AuthService {
         }
         requireActive(user);
         user.recordSuccessfulLogin();
-        return issueTokens(user, UUID.randomUUID(), now).response();
+        if (mfaService.isEnabled(user.getId())) {
+            return LoginResponse.mfaRequired(mfaService.createChallenge(user.getId()), mfaService.challengeExpiry(now));
+        }
+        boolean enrollmentRequired = user.getRoles().stream().anyMatch(MFA_REQUIRED_ROLES::contains);
+        return LoginResponse.authenticated(issueTokens(user, UUID.randomUUID(), false, now).response(),
+                enrollmentRequired);
+    }
+
+    /** Second login step: exchanges the MFA challenge plus a valid code for tokens marked {@code amr=mfa}. */
+    @Transactional(noRollbackFor = BusinessException.class)
+    public TokenResponse verifyMfa(MfaVerifyRequest request) {
+        boolean hasCode = request.code() != null && !request.code().isBlank();
+        boolean hasRecovery = request.recoveryCode() != null && !request.recoveryCode().isBlank();
+        if (hasCode == hasRecovery) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "Send either code or recoveryCode.");
+        }
+        User user = mfaService.completeChallenge(request.mfaToken(), request.code(), request.recoveryCode());
+        return issueTokens(user, UUID.randomUUID(), true, clock.instant()).response();
     }
 
     /**
@@ -113,7 +141,7 @@ public class AuthService {
             refreshTokens.revokeFamily(current.getFamilyId(), now, "ACCOUNT_NOT_ACTIVE");
             throw new BusinessException(ErrorCode.ACCOUNT_NOT_ACTIVE, "This account is not active.");
         }
-        Issued issued = issueTokens(user, current.getFamilyId(), now);
+        Issued issued = issueTokens(user, current.getFamilyId(), current.isMfaVerified(), now);
         current.rotateTo(issued.refreshToken().getId(), now);
         return issued.response();
     }
@@ -125,17 +153,13 @@ public class AuthService {
                 .ifPresent(token -> refreshTokens.revokeFamily(token.getFamilyId(), clock.instant(), "LOGOUT"));
     }
 
-    @Transactional
-    public void revokeAllSessions(UUID userId, String reason) {
-        refreshTokens.revokeAllForUser(userId, clock.instant(), reason);
-    }
-
-    private Issued issueTokens(User user, UUID familyId, Instant now) {
+    private Issued issueTokens(User user, UUID familyId, boolean mfaVerified, Instant now) {
         String opaque = TokenHasher.newOpaqueToken();
         Instant refreshExpiresAt = now.plus(jwtProperties.refreshTokenTtl());
         RefreshToken saved = refreshTokens.save(
-                new RefreshToken(user.getId(), familyId, TokenHasher.sha256(opaque), now, refreshExpiresAt));
-        String accessToken = accessTokenIssuer.issue(user, now);
+                new RefreshToken(user.getId(), familyId, TokenHasher.sha256(opaque), now, refreshExpiresAt,
+                        mfaVerified));
+        String accessToken = accessTokenIssuer.issue(user, mfaVerified, now);
         TokenResponse response = new TokenResponse("Bearer", accessToken, now.plus(jwtProperties.accessTokenTtl()),
                 opaque, refreshExpiresAt);
         return new Issued(response, saved);

@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bigbazaar.common.events.Topics;
+import com.bigbazaar.identity.mfa.Totp;
 import com.bigbazaar.identity.outbox.OutboxRelay;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -26,6 +27,8 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.JsonNode;
@@ -33,7 +36,6 @@ import tools.jackson.databind.json.JsonMapper;
 
 /** Phase 1 acceptance path against real PostgreSQL and Kafka. */
 @SpringBootTest(properties = {
-        "bigbazaar.jwt.secret=test-secret-that-is-definitely-longer-than-32-bytes",
         "bigbazaar.bootstrap-admin.email=admin@bigbazaar.test",
         "bigbazaar.bootstrap-admin.password=AdminPass123",
         "bigbazaar.outbox.poll-interval=1h",
@@ -42,6 +44,12 @@ import tools.jackson.databind.json.JsonMapper;
 @AutoConfigureMockMvc
 @Import(TestcontainersConfig.class)
 class IdentityFlowIntegrationTest {
+
+    @DynamicPropertySource
+    static void keys(DynamicPropertyRegistry registry) {
+        registry.add("bigbazaar.jwt.private-key-location", () -> "file:" + TestKeys.PRIVATE_KEY);
+        registry.add("bigbazaar.mfa.encryption-key", () -> TestKeys.MFA_KEY);
+    }
 
     @Autowired MockMvc mvc;
     @Autowired JsonMapper json;
@@ -106,8 +114,28 @@ class IdentityFlowIntegrationTest {
                 .andReturn();
         String sellerId = json.readTree(applied.getResponse().getContentAsString()).get("id").asString();
 
+        // The bootstrap admin exists
+        assertThat(jdbc.queryForObject("""
+                select count(*) from users u join user_roles r on r.user_id = u.id
+                where u.email = 'admin@bigbazaar.test' and r.role = 'ADMIN'""", Integer.class)).isOne();
+
+        // Admin without MFA can log in but cannot act as admin until enrolled
+        String adminEmail = newAdmin();
+        JsonNode adminLogin = login(adminEmail, "Secret1234");
+        assertThat(adminLogin.get("status").asString()).isEqualTo("AUTHENTICATED");
+        assertThat(adminLogin.get("mfaEnrollmentRequired").asBoolean()).isTrue();
+        String pwdOnlyAdmin = adminLogin.get("accessToken").asString();
+        assertThat(amr(pwdOnlyAdmin)).containsExactly("pwd");
+        mvc.perform(get("/api/v1/admin/sellers").header("Authorization", "Bearer " + pwdOnlyAdmin))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("MFA_REQUIRED"));
+
+        // Enroll an authenticator app, then log in with password + code
+        byte[] adminSecret = enrollTotp(pwdOnlyAdmin, "Secret1234");
+        String adminAccess = loginWithTotp(adminEmail, "Secret1234", adminSecret);
+        assertThat(amr(adminAccess)).containsExactly("pwd", "mfa");
+
         // Admin approves with a reason (FR-SELLER-02); history is recorded (FR-SELLER-03)
-        String adminAccess = login("admin@bigbazaar.test", "AdminPass123").get("accessToken").asString();
         mvc.perform(post("/api/v1/admin/sellers/{id}/decisions", sellerId)
                         .header("Authorization", "Bearer " + adminAccess)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -150,8 +178,9 @@ class IdentityFlowIntegrationTest {
 
         // Events reach Kafka through the outbox (FR-AUTH-08, FR-SELLER-06)
         relay.publishPending();
-        List<String> types = readEventTypes(4);
-        assertThat(types).contains("UserRegistered", "SellerApplicationSubmitted", "SellerApproved", "UserSuspended");
+        List<String> types = readEventTypes(5);
+        assertThat(types).contains("UserRegistered", "MfaEnabled", "SellerApplicationSubmitted", "SellerApproved",
+                "UserSuspended");
         assertThat(jdbc.queryForObject("select count(*) from outbox_events where status <> 'PUBLISHED'",
                 Integer.class)).isZero();
     }
@@ -206,6 +235,169 @@ class IdentityFlowIntegrationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"))
                 .andExpect(jsonPath("$.correlationId").isNotEmpty());
+    }
+
+    @Test
+    void customerMfaLifecycle() throws Exception {
+        String email = "mfa+" + UUID.randomUUID() + "@example.com";
+        register(email);
+        String pwdOnly = login(email, "Secret1234").get("accessToken").asString();
+
+        // Setup needs the password, so a stolen access token alone can't enroll someone else's phone
+        mvc.perform(post("/api/v1/users/me/mfa/totp/setup").header("Authorization", "Bearer " + pwdOnly)
+                        .contentType(MediaType.APPLICATION_JSON).content(body(Map.of("password", "wrong-pass1"))))
+                .andExpect(status().isUnauthorized());
+
+        MvcResult setup = mvc.perform(post("/api/v1/users/me/mfa/totp/setup")
+                        .header("Authorization", "Bearer " + pwdOnly)
+                        .contentType(MediaType.APPLICATION_JSON).content(body(Map.of("password", "Secret1234"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.otpauthUri").value(org.hamcrest.Matchers.startsWith("otpauth://totp/BigBazaar:")))
+                .andReturn();
+        byte[] secret = base32Decode(json.readTree(setup.getResponse().getContentAsString()).get("secret").asString());
+
+        mvc.perform(post("/api/v1/users/me/mfa/totp/activate").header("Authorization", "Bearer " + pwdOnly)
+                        .contentType(MediaType.APPLICATION_JSON).content(body(Map.of("code", "000000"))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_MFA_CODE"));
+        long step = Totp.stepAt(java.time.Instant.now());
+        MvcResult activated = mvc.perform(post("/api/v1/users/me/mfa/totp/activate")
+                        .header("Authorization", "Bearer " + pwdOnly)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body(Map.of("code", Totp.codeAt(secret, step)))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recoveryCodes.length()").value(10))
+                .andReturn();
+        String recoveryCode = json.readTree(activated.getResponse().getContentAsString())
+                .get("recoveryCodes").get(0).asString();
+
+        // Password alone now only yields a challenge
+        JsonNode challenge = login(email, "Secret1234");
+        assertThat(challenge.get("status").asString()).isEqualTo("MFA_REQUIRED");
+        assertThat(challenge.has("accessToken")).isFalse();
+        String mfaToken = challenge.get("mfaToken").asString();
+
+        // The code used for activation can't be replayed
+        verifyMfa(mfaToken, Map.of("code", Totp.codeAt(secret, step)), 401);
+
+        // A recovery code works once
+        JsonNode viaRecovery = verifyMfa(mfaToken, Map.of("recoveryCode", recoveryCode.toLowerCase()), 200);
+        assertThat(amr(viaRecovery.get("accessToken").asString())).containsExactly("pwd", "mfa");
+        verifyMfa(mfaToken, Map.of("recoveryCode", recoveryCode), 401); // challenge already consumed
+        String second = login(email, "Secret1234").get("mfaToken").asString();
+        verifyMfa(second, Map.of("recoveryCode", recoveryCode), 401);    // code already used
+
+        // Refreshing keeps the MFA strength of the original login
+        JsonNode refreshed = refresh(viaRecovery.get("refreshToken").asString(), 200);
+        assertThat(amr(refreshed.get("accessToken").asString())).containsExactly("pwd", "mfa");
+
+        // A challenge dies after 5 wrong codes, even if the 6th is right
+        String third = login(email, "Secret1234").get("mfaToken").asString();
+        for (int i = 0; i < 5; i++) {
+            verifyMfa(third, Map.of("code", "000000"), 401);
+        }
+        verifyMfa(third, Map.of("code", Totp.codeAt(secret, step + 1)), 401);
+
+        // Admin reset removes MFA and signs the user out everywhere
+        String userId = jdbc.queryForObject("select id::text from users where lower(email) = lower(?)",
+                String.class, email);
+        String admin = adminAccessToken();
+        mvc.perform(post("/api/v1/admin/users/{id}/mfa/reset", userId).header("Authorization", "Bearer " + admin)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body(Map.of("reason", "Lost phone, identity checked on call"))))
+                .andExpect(status().isNoContent());
+        refresh(refreshed.get("refreshToken").asString(), 401);
+        assertThat(login(email, "Secret1234").get("status").asString()).isEqualTo("AUTHENTICATED");
+    }
+
+    @Test
+    void jwksPublishesOnlyThePublicKey() throws Exception {
+        MvcResult result = mvc.perform(get("/.well-known/jwks.json"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.keys[0].kty").value("RSA"))
+                .andExpect(jsonPath("$.keys[0].alg").value("RS256"))
+                .andExpect(jsonPath("$.keys[0].kid").isNotEmpty())
+                .andReturn();
+        JsonNode key = json.readTree(result.getResponse().getContentAsString()).get("keys").get(0);
+        assertThat(key.has("d")).isFalse();
+        assertThat(key.has("p")).isFalse();
+    }
+
+    /** A fresh admin (role granted directly in the DB) so tests don't share MFA state. */
+    private String newAdmin() throws Exception {
+        String email = "admin+" + UUID.randomUUID() + "@example.com";
+        register(email);
+        jdbc.update("insert into user_roles (user_id, role) select id, 'ADMIN' from users where email = ?", email);
+        return email;
+    }
+
+    private String adminAccessToken() throws Exception {
+        String email = newAdmin();
+        byte[] secret = enrollTotp(login(email, "Secret1234").get("accessToken").asString(), "Secret1234");
+        return loginWithTotp(email, "Secret1234", secret);
+    }
+
+    private byte[] enrollTotp(String accessToken, String password) throws Exception {
+        MvcResult setup = mvc.perform(post("/api/v1/users/me/mfa/totp/setup")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON).content(body(Map.of("password", password))))
+                .andExpect(status().isOk())
+                .andReturn();
+        byte[] secret = base32Decode(json.readTree(setup.getResponse().getContentAsString()).get("secret").asString());
+        mvc.perform(post("/api/v1/users/me/mfa/totp/activate").header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body(Map.of("code", Totp.codeAt(secret, Totp.stepAt(java.time.Instant.now()))))))
+                .andExpect(status().isOk());
+        return secret;
+    }
+
+    /** Uses the next time step so it never collides with a code just used for enrollment. */
+    private String loginWithTotp(String email, String password, byte[] secret) throws Exception {
+        JsonNode challenge = login(email, password);
+        assertThat(challenge.get("status").asString()).isEqualTo("MFA_REQUIRED");
+        String code = Totp.codeAt(secret, Totp.stepAt(java.time.Instant.now()) + 1);
+        return verifyMfa(challenge.get("mfaToken").asString(), Map.of("code", code), 200)
+                .get("accessToken").asString();
+    }
+
+    private JsonNode verifyMfa(String mfaToken, Map<String, String> factor, int expectedStatus) throws Exception {
+        var request = new java.util.HashMap<String, String>(factor);
+        request.put("mfaToken", mfaToken);
+        MvcResult result = mvc.perform(post("/api/v1/auth/mfa/verify").contentType(MediaType.APPLICATION_JSON)
+                        .content(body(request)))
+                .andExpect(status().is(expectedStatus))
+                .andReturn();
+        return json.readTree(result.getResponse().getContentAsString());
+    }
+
+    private void register(String email) throws Exception {
+        mvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON)
+                        .content(body(Map.of("name", "Test User", "email", email, "phone", "9876543210",
+                                "password", "Secret1234"))))
+                .andExpect(status().isCreated());
+    }
+
+    private List<String> amr(String accessToken) {
+        String payload = new String(java.util.Base64.getUrlDecoder().decode(accessToken.split("\\.")[1]));
+        List<String> values = new ArrayList<>();
+        json.readTree(payload).get("amr").forEach(n -> values.add(n.asString()));
+        return values;
+    }
+
+    private static byte[] base32Decode(String value) {
+        String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        int buffer = 0;
+        int bits = 0;
+        for (char c : value.toCharArray()) {
+            buffer = (buffer << 5) | alphabet.indexOf(c);
+            bits += 5;
+            if (bits >= 8) {
+                out.write((buffer >> (bits - 8)) & 0xff);
+                bits -= 8;
+            }
+        }
+        return out.toByteArray();
     }
 
     private JsonNode login(String email, String password) throws Exception {

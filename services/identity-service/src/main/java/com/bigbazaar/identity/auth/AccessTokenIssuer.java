@@ -3,7 +3,7 @@ package com.bigbazaar.identity.auth;
 import com.bigbazaar.identity.user.User;
 import java.time.Instant;
 import java.util.List;
-import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
@@ -15,13 +15,15 @@ public class AccessTokenIssuer {
 
     private final JwtEncoder encoder;
     private final JwtProperties properties;
+    private final SigningKeys signingKeys;
 
-    public AccessTokenIssuer(JwtEncoder encoder, JwtProperties properties) {
+    public AccessTokenIssuer(JwtEncoder encoder, JwtProperties properties, SigningKeys signingKeys) {
         this.encoder = encoder;
         this.properties = properties;
+        this.signingKeys = signingKeys;
     }
 
-    public String issue(User user, Instant now) {
+    public String issue(User user, boolean mfaVerified, Instant now) {
         List<String> roles = user.getRoles().stream().map(Enum::name).sorted().toList();
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer(properties.issuer())
@@ -30,8 +32,9 @@ public class AccessTokenIssuer {
                 .expiresAt(now.plus(properties.accessTokenTtl()))
                 .claim("email", user.getEmail())
                 .claim("roles", roles)
+                .claim("amr", AuthMethods.of(mfaVerified))
                 .build();
-        JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();
+        JwsHeader header = JwsHeader.with(SignatureAlgorithm.RS256).keyId(signingKeys.keyId()).build();
         return encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
     }
 }

@@ -1,6 +1,8 @@
 package com.bigbazaar.identity.web;
 
 import com.bigbazaar.identity.auth.AuthDtos.LoginRequest;
+import com.bigbazaar.identity.auth.AuthDtos.LoginResponse;
+import com.bigbazaar.identity.auth.AuthDtos.MfaVerifyRequest;
 import com.bigbazaar.identity.auth.AuthDtos.RefreshRequest;
 import com.bigbazaar.identity.auth.AuthDtos.RegisterRequest;
 import com.bigbazaar.identity.auth.AuthDtos.RegisteredUser;
@@ -35,9 +37,15 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    @Operation(summary = "Exchange email and password for an access and refresh token")
-    public TokenResponse login(@Valid @RequestBody LoginRequest request) {
+    @Operation(summary = "Check email and password; returns tokens, or an MFA challenge when MFA is on")
+    public LoginResponse login(@Valid @RequestBody LoginRequest request) {
         return authService.login(request);
+    }
+
+    @PostMapping("/mfa/verify")
+    @Operation(summary = "Complete an MFA login with an authenticator code or a one-time recovery code")
+    public TokenResponse verifyMfa(@Valid @RequestBody MfaVerifyRequest request) {
+        return authService.verifyMfa(request);
     }
 
     @PostMapping("/refresh")

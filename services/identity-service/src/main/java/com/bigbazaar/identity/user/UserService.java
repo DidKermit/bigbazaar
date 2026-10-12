@@ -1,7 +1,7 @@
 package com.bigbazaar.identity.user;
 
 import com.bigbazaar.common.events.Topics;
-import com.bigbazaar.identity.auth.AuthService;
+import com.bigbazaar.identity.auth.RefreshTokenRepository;
 import com.bigbazaar.identity.common.BusinessException;
 import com.bigbazaar.identity.common.ErrorCode;
 import com.bigbazaar.identity.common.IdentityEvents;
@@ -9,6 +9,7 @@ import com.bigbazaar.identity.outbox.OutboxWriter;
 import com.bigbazaar.identity.user.UserDtos.AddressRequest;
 import com.bigbazaar.identity.user.UserDtos.AddressResponse;
 import com.bigbazaar.identity.user.UserDtos.UserProfile;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -23,14 +24,14 @@ public class UserService {
 
     private final UserRepository users;
     private final AddressRepository addresses;
-    private final AuthService authService;
+    private final RefreshTokenRepository refreshTokens;
     private final OutboxWriter outbox;
 
-    public UserService(UserRepository users, AddressRepository addresses, AuthService authService,
+    public UserService(UserRepository users, AddressRepository addresses, RefreshTokenRepository refreshTokens,
                        OutboxWriter outbox) {
         this.users = users;
         this.addresses = addresses;
-        this.authService = authService;
+        this.refreshTokens = refreshTokens;
         this.outbox = outbox;
     }
 
@@ -109,7 +110,7 @@ public class UserService {
         }
         user.changeStatus(target);
         if (target != UserStatus.ACTIVE) {
-            authService.revokeAllSessions(userId, "ACCOUNT_" + target);
+            refreshTokens.revokeAllForUser(userId, Instant.now(), "ACCOUNT_" + target);
         }
         outbox.write(Topics.IDENTITY_EVENTS, "User", userId.toString(), eventType,
                 new IdentityEvents.UserStatusChanged(userId, previous.name(), target.name(), reason, actorId));

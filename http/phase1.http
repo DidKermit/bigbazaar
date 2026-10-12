@@ -36,12 +36,40 @@ Content-Type: application/json
   "pickupAddress": "12 MG Road, Bengaluru 560001"
 }
 
-### 5. Log in as the bootstrap admin (from .env)
-# @name admin
+### 5. Log in as the bootstrap admin (from .env). Status is AUTHENTICATED with mfaEnrollmentRequired.
+# @name adminPwd
 POST {{gateway}}/api/v1/auth/login
 Content-Type: application/json
 
 { "email": "admin@bigbazaar.local", "password": "change-me-Admin123" }
+
+### 5a. Start authenticator setup: scan otpauthUri as a QR code, or type the secret into the app
+POST {{gateway}}/api/v1/users/me/mfa/totp/setup
+Authorization: Bearer {{adminPwd.response.body.accessToken}}
+Content-Type: application/json
+
+{ "password": "change-me-Admin123" }
+
+### 5b. Activate with the 6-digit code from the app. Save the recovery codes it returns.
+POST {{gateway}}/api/v1/users/me/mfa/totp/activate
+Authorization: Bearer {{adminPwd.response.body.accessToken}}
+Content-Type: application/json
+
+{ "code": "123456" }
+
+### 5c. Log in again: now returns status MFA_REQUIRED and an mfaToken
+# @name adminChallenge
+POST {{gateway}}/api/v1/auth/login
+Content-Type: application/json
+
+{ "email": "admin@bigbazaar.local", "password": "change-me-Admin123" }
+
+### 5d. Complete login with a fresh code from the app
+# @name admin
+POST {{gateway}}/api/v1/auth/mfa/verify
+Content-Type: application/json
+
+{ "mfaToken": "{{adminChallenge.response.body.mfaToken}}", "code": "123456" }
 
 ### 6. Review queue
 # @name queue

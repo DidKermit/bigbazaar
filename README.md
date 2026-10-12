@@ -37,16 +37,18 @@ not code.
 Prerequisites: JDK 21, Docker.
 
 ```bash
-cp .env.example .env            # then set JWT_SECRET: openssl rand -base64 48
+cp .env.example .env
+infra/keys/generate-dev-keys.sh   # RSA signing key + prints MFA_ENCRYPTION_KEY for .env
 docker compose --profile app up -d --build
 ```
 
 Everything is reached through the gateway on `http://localhost:8080`. Identity's Swagger UI is at
 `http://localhost:8081/swagger-ui.html`. Try the flow in [`http/phase1.http`](http/phase1.http):
-register, log in, apply as a seller, approve as the bootstrap admin.
+register, log in, apply as a seller, enroll the bootstrap admin's authenticator app, approve.
 
 To run a service from your IDE instead, start only the infrastructure (`docker compose up -d`) and
-run the service with `JWT_SECRET` set and `KAFKA_BOOTSTRAP_SERVERS=localhost:29092`.
+run identity-service from the repository root with `MFA_ENCRYPTION_KEY` set and
+`KAFKA_BOOTSTRAP_SERVERS=localhost:29092` (it reads `infra/keys/jwt-private.pem` by default).
 
 ## Build and test
 
@@ -64,10 +66,13 @@ Integration tests use Testcontainers (real PostgreSQL and Kafka), so Docker must
 - Every event is an `EventEnvelope` written to a transactional outbox, then relayed to Kafka.
 - Every error is `{success, code, message, correlationId, timestamp, fieldErrors}`.
 - Every request carries `X-Correlation-Id`; it appears in logs, error bodies and events.
+- Access tokens are RS256. Only identity holds the private key; everything else verifies with
+  identity's public JWKS. Admin endpoints need a token from a login that passed MFA (`amr` has `mfa`).
 - No service reads another service's database. Cross-service data arrives as event projections.
 
 ## Architecture decisions
 
 - [ADR 0001: Coarse-grained microservices](docs/adr/0001-coarse-grained-microservices.md)
 - [ADR 0002: Transactional outbox for events](docs/adr/0002-transactional-outbox.md)
-- [ADR 0003: JWT and refresh-token design](docs/adr/0003-jwt-and-refresh-tokens.md)
+- [ADR 0003: RS256 tokens with rotating refresh tokens](docs/adr/0003-jwt-and-refresh-tokens.md)
+- [ADR 0004: Multi-factor authentication](docs/adr/0004-multi-factor-authentication.md)

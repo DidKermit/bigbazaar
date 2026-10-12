@@ -10,6 +10,9 @@ public final class IdentityEvents {
     public static final String USER_REGISTERED = "UserRegistered";
     public static final String USER_SUSPENDED = "UserSuspended";
     public static final String USER_REACTIVATED = "UserReactivated";
+    public static final String MFA_ENABLED = "MfaEnabled";
+    public static final String MFA_DISABLED = "MfaDisabled";
+    public static final String MFA_RESET = "MfaReset";
     public static final String SELLER_APPLICATION_SUBMITTED = "SellerApplicationSubmitted";
     public static final String SELLER_REVIEW_STARTED = "SellerReviewStarted";
     public static final String SELLER_APPROVED = "SellerApproved";
@@ -21,6 +24,9 @@ public final class IdentityEvents {
     }
 
     public record UserStatusChanged(UUID userId, String fromStatus, String toStatus, String reason, UUID actorId) {
+    }
+
+    public record MfaChanged(UUID userId, String method, String reason, UUID actorId) {
     }
 
     public record SellerStatusChanged(UUID sellerId, UUID userId, String businessName, String fromStatus,

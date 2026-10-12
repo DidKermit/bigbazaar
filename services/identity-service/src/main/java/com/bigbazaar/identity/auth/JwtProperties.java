@@ -1,19 +1,24 @@
 package com.bigbazaar.identity.auth;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.core.io.Resource;
 
+/**
+ * Access tokens are signed with an RSA private key that only identity-service holds. Everyone else
+ * verifies with the public key published at {@code /.well-known/jwks.json}.
+ */
 @ConfigurationProperties(prefix = "bigbazaar.jwt")
 public record JwtProperties(
         String issuer,
-        String secret,
+        Resource privateKeyLocation,
         Duration accessTokenTtl,
         Duration refreshTokenTtl
 ) {
     public JwtProperties {
-        if (secret == null || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
-            throw new IllegalStateException("bigbazaar.jwt.secret must be at least 32 bytes (set JWT_SECRET)");
+        if (privateKeyLocation == null || !privateKeyLocation.exists()) {
+            throw new IllegalStateException("bigbazaar.jwt.private-key-location must point to a PKCS#8 RSA key "
+                    + "(set JWT_PRIVATE_KEY_PATH; generate one with infra/keys/generate-dev-keys.sh)");
         }
         if (issuer == null) {
             issuer = "bigbazaar-identity";

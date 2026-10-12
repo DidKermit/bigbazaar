@@ -1,4 +1,4 @@
-package com.bigbazaar.identity.auth;
+package com.bigbazaar.identity.common;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -8,17 +8,17 @@ import java.util.Base64;
 import java.util.HexFormat;
 
 /** Refresh tokens are 256-bit random values; only their SHA-256 hash is stored. */
-final class TokenHasher {
+public final class TokenHasher {
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
-    static String newOpaqueToken() {
+    public static String newOpaqueToken() {
         byte[] bytes = new byte[32];
         RANDOM.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
-    static String sha256(String token) {
+    public static String sha256(String token) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             return HexFormat.of().formatHex(digest.digest(token.getBytes(StandardCharsets.UTF_8)));
