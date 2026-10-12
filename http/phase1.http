@@ -33,8 +33,23 @@ Content-Type: application/json
   "businessEmail": "shop@example.com",
   "businessPhone": "9876543210",
   "taxId": "29ABCDE1234F1Z5",
-  "pickupAddress": "12 MG Road, Bengaluru 560001"
+  "pickupAddress": "12 MG Road, Bengaluru 560001",
+  "panDate": "01/01/1990",
+  "bankAccountNumber": "123456789012",
+  "bankIfsc": "SBIN0001234"
 }
+
+### 4-auto-a. Start DigiLocker (the app would open Sandbox's SDK with the sessionId)
+POST {{gateway}}/api/v1/sellers/me/verification/identity
+Authorization: Bearer {{login.response.body.accessToken}}
+
+### 4-auto-b. DigiLocker finished: the automatic checks run in the background
+POST {{gateway}}/api/v1/sellers/me/verification/identity/complete
+Authorization: Bearer {{login.response.body.accessToken}}
+
+### 4-auto-c. A few seconds later: status APPROVED, with each check under "verification"
+GET {{gateway}}/api/v1/sellers/me
+Authorization: Bearer {{login.response.body.accessToken}}
 
 ### 4a. Ask for an upload link for a KYC document (sizeBytes must match the file; sample-kyc.pdf is a placeholder)
 # @name upload
@@ -89,9 +104,10 @@ Content-Type: application/json
 
 { "mfaToken": "{{adminChallenge.response.body.mfaToken}}", "code": "123456" }
 
-### 6. Review queue
+### 6. Review queue: applications automatic verification couldn't clear (use an account ending 1111
+###    in step 4 to land one here; skip steps 4-auto-a/b to approve by hand from PENDING_VERIFICATION)
 # @name queue
-GET {{gateway}}/api/v1/admin/sellers?status=PENDING_VERIFICATION
+GET {{gateway}}/api/v1/admin/sellers?status=UNDER_REVIEW
 Authorization: Bearer {{admin.response.body.accessToken}}
 
 ### 7. Approve with a reason

@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bigbazaar.common.events.Topics;
+import com.bigbazaar.identity.common.IdentityEvents;
 import com.bigbazaar.identity.mfa.Totp;
 import com.bigbazaar.identity.outbox.OutboxRelay;
 import java.time.Duration;
@@ -40,6 +41,9 @@ import tools.jackson.databind.json.JsonMapper;
         "bigbazaar.bootstrap-admin.email=admin@bigbazaar.test",
         "bigbazaar.bootstrap-admin.password=AdminPass123",
         "bigbazaar.outbox.poll-interval=1h",
+        "bigbazaar.kyc.poll-interval=200ms",
+        "bigbazaar.kyc.retry-delay=100ms",
+        "bigbazaar.kyc.max-attempts=2",
         "logging.level.org.apache.kafka=WARN"
 })
 @AutoConfigureMockMvc
@@ -470,6 +474,116 @@ class IdentityFlowIntegrationTest {
                 com.nimbusds.jose.JWSAlgorithm.RS256).keyID(jwk.getKeyID()).build(), claims);
         jwt.sign(new com.nimbusds.jose.crypto.RSASSASigner(jwk));
         return jwt.serialize();
+    }
+
+    @Test
+    void cleanApplicationIsApprovedAutomatically() throws Exception {
+        String email = "auto+" + UUID.randomUUID() + "@example.com";
+        register(email);
+        String access = login(email, "Secret1234").get("accessToken").asString();
+        String sellerId = applyForVerification(access, "29ABCDE1234F1Z5", "123456789012");
+
+        mvc.perform(get("/api/v1/sellers/me").header("Authorization", "Bearer " + access))
+                .andExpect(jsonPath("$.verification.status").value("AWAITING_IDENTITY"))
+                .andExpect(jsonPath("$.verification.nextStep").value("CONNECT_DIGILOCKER"))
+                .andExpect(jsonPath("$.seller.bankAccountLast4").value("9012"));
+        // Checks can't run before DigiLocker is connected.
+        mvc.perform(post("/api/v1/sellers/me/verification/identity/complete")
+                        .header("Authorization", "Bearer " + access))
+                .andExpect(status().isConflict());
+        connectDigiLocker(access);
+
+        JsonNode detail = awaitSellerStatus(access, "APPROVED");
+        assertThat(detail.at("/verification/status").asString()).isEqualTo("PASSED");
+        List<String> outcomes = new ArrayList<>();
+        detail.at("/verification/checks").forEach(c -> outcomes.add(c.get("type").asString() + "="
+                + c.get("outcome").asString()));
+        assertThat(outcomes).containsExactly("GSTIN=PASS", "PAN=PASS", "BANK_ACCOUNT=PASS", "IDENTITY=PASS");
+        JsonNode last = detail.get("history").get(detail.get("history").size() - 1);
+        assertThat(last.get("actorId").asString()).isEqualTo(IdentityEvents.SYSTEM_ACTOR_ID.toString());
+        assertThat(last.get("reason").asString()).startsWith("Automatic verification passed");
+        assertThat(jdbc.queryForObject("select count(*) from outbox_events where aggregate_id = ? and event_type = ?",
+                Long.class, sellerId, IdentityEvents.SELLER_VERIFICATION_COMPLETED)).isEqualTo(1);
+        // The bank account number itself is never stored readable.
+        assertThat(jdbc.queryForObject("select kyc_inputs_enc from sellers where id = ?::uuid", String.class,
+                sellerId)).startsWith("v1:").doesNotContain("123456789012");
+
+        mvc.perform(get("/api/v1/users/me").header("Authorization",
+                        "Bearer " + login(email, "Secret1234").get("accessToken").asString()))
+                .andExpect(jsonPath("$.roles").value(org.hamcrest.Matchers.hasItem("SELLER")));
+    }
+
+    @Test
+    void mismatchesGoToAnAdminWithTheResults() throws Exception {
+        String email = "mismatch+" + UUID.randomUUID() + "@example.com";
+        register(email);
+        String access = login(email, "Secret1234").get("accessToken").asString();
+        // Mock registry: a PAN ending in X has a different name; an account ending 1111 is someone else's.
+        String sellerId = applyForVerification(access, "29ABCDE1234X1Z5", "999999991111");
+        connectDigiLocker(access);
+
+        JsonNode detail = awaitSellerStatus(access, "UNDER_REVIEW");
+        assertThat(detail.at("/verification/status").asString()).isEqualTo("NEEDS_REVIEW");
+        assertThat(detail.at("/verification/checks/1/outcome").asString()).isEqualTo("MISMATCH");
+        assertThat(detail.at("/verification/checks/2/registryName").asString()).isEqualTo("SOMEONE ELSE");
+        assertThat(detail.at("/verification/outcomeSummary").asString())
+                .contains("Name on PAN doesn't match", "held by a different name");
+
+        String admin = adminAccessToken();
+        mvc.perform(get("/api/v1/admin/sellers/{id}", sellerId).header("Authorization", "Bearer " + admin))
+                .andExpect(jsonPath("$.verification.checks.length()").value(4));
+        mvc.perform(post("/api/v1/admin/sellers/{id}/decisions", sellerId)
+                        .header("Authorization", "Bearer " + admin).contentType(MediaType.APPLICATION_JSON)
+                        .content(body(Map.of("decision", "APPROVE", "reason", "Checked the PAN card by phone"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("APPROVED"));
+    }
+
+    @Test
+    void providerOutageIsRetriedThenHandedToAnAdmin() throws Exception {
+        String email = "outage+" + UUID.randomUUID() + "@example.com";
+        register(email);
+        String access = login(email, "Secret1234").get("accessToken").asString();
+        applyForVerification(access, "29ABCDE1234F1Z5", "123456785030"); // mock bank network is down
+        connectDigiLocker(access);
+
+        JsonNode detail = awaitSellerStatus(access, "UNDER_REVIEW");
+        assertThat(detail.at("/verification/attempts").asInt()).isEqualTo(2);
+        assertThat(detail.at("/verification/checks/0/outcome").asString()).isEqualTo("ERROR");
+    }
+
+    private String applyForVerification(String access, String gstin, String account) throws Exception {
+        MvcResult result = mvc.perform(post("/api/v1/sellers/applications")
+                        .header("Authorization", "Bearer " + access).contentType(MediaType.APPLICATION_JSON)
+                        .content(body(Map.of("businessName", "Kai Crafts", "businessEmail", "shop@example.com",
+                                "businessPhone", "9876543210", "taxId", gstin,
+                                "pickupAddress", "12 MG Road, Bengaluru", "panDate", "01/01/1990",
+                                "bankAccountNumber", account, "bankIfsc", "SBIN0001234"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return json.readTree(result.getResponse().getContentAsString()).get("id").asString();
+    }
+
+    private void connectDigiLocker(String access) throws Exception {
+        mvc.perform(post("/api/v1/sellers/me/verification/identity").header("Authorization", "Bearer " + access))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.provider").value("mock"))
+                .andExpect(jsonPath("$.sessionId").isNotEmpty());
+        mvc.perform(post("/api/v1/sellers/me/verification/identity/complete")
+                        .header("Authorization", "Bearer " + access))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("READY"));
+    }
+
+    private JsonNode awaitSellerStatus(String access, String expected) {
+        JsonNode[] detail = new JsonNode[1];
+        org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(20)).until(() -> {
+            MvcResult r = mvc.perform(get("/api/v1/sellers/me").header("Authorization", "Bearer " + access))
+                    .andReturn();
+            detail[0] = json.readTree(r.getResponse().getContentAsString());
+            return expected.equals(detail[0].at("/seller/status").asString());
+        });
+        return detail[0];
     }
 
     /** A fresh admin (role granted directly in the DB) so tests don't share MFA state. */
