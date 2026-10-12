@@ -5,7 +5,7 @@
 
 ## Context
 
-Sellers upload identity and business documents (FR-SELLER-04). These are files of up to a few
+Sellers upload identity and business documents so admins can verify them before approval (FR-SELLER-02). These are files of up to a few
 megabytes that contain personal data. The SRS (2.5, 14) puts files in object storage, not the
 database, and asks that sensitive files are never public.
 

@@ -22,8 +22,8 @@ Publishes to the `identity-events` topic.
 | GET | `/.well-known/jwks.json` | public | Public signing key(s) for token verification | |
 | POST | `/sellers/applications` | customer | Apply, or re-apply after rejection | FR-SELLER-01 |
 | GET | `/sellers/me` | applicant | Application, documents, status history | FR-SELLER-05 |
-| POST | `/sellers/me/documents/uploads` | applicant | Ask for a short-lived upload link (PDF, JPEG or PNG, up to 10 MB) | FR-SELLER-04 |
-| POST | `/sellers/me/documents/{id}/confirm` | applicant | After uploading: checks size and file signature, marks it `UPLOADED` | FR-SELLER-04 |
+| POST | `/sellers/me/documents/uploads` | applicant | Ask for a short-lived upload link (PDF, JPEG or PNG, up to 10 MB) | SRS 2.5 |
+| POST | `/sellers/me/documents/{id}/confirm` | applicant | After uploading: checks size and file signature, marks it `UPLOADED` | SRS 2.5 |
 | GET | `/sellers/me/documents/{id}/link` | applicant | Short-lived download link to one's own document | |
 | GET | `/admin/sellers?status=` | admin | Review queue, paginated | |
 | GET | `/admin/sellers/{id}` | admin | Detail with immutable history | FR-SELLER-03 |
