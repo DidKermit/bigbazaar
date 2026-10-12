@@ -1,0 +1,27 @@
+# Services
+
+| Service | Phase | Port | Database | Status |
+|---|---|---|---|---|
+| api-gateway | 1 | 8080 | none (Redis for rate limits) | Built |
+| identity-service | 1 | 8081 | identity_db | Built |
+| catalog-service | 2 | 8082 | catalog_db | Planned |
+| commerce-service | 2 | 8083 | commerce_db | Planned |
+| payment-service | 3 | 8084 | payment_db | Planned |
+| notification-service | 3 | 8085 | notification_db | Planned |
+| trust-service | 3 | 8086 | trust_db | Planned |
+| search-service | 4 | 8087 | OpenSearch | Planned |
+| recommendation-service | 4 | 8088 | recommendation_db | Planned |
+| ai-service (Python FastAPI) | 4 | 8090 | optional ai logs | Planned |
+
+The local PostgreSQL init script already creates every database and its login, so a new service only
+needs its module, Flyway migrations, a gateway route and a compose entry.
+
+## Definition of done for a service (SRS 7.1)
+
+1. Flyway migrations run on an empty database.
+2. Unit and integration tests pass.
+3. Security and ownership tests pass where applicable.
+4. Kafka producer or consumer tests pass where applicable.
+5. Docker image builds and the health endpoint works.
+6. OpenAPI and example requests are updated.
+7. The service README explains responsibilities and failure handling.

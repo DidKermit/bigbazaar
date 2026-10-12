@@ -1,0 +1,68 @@
+### Phase 1 walkthrough through the gateway. Works in IntelliJ HTTP Client and VS Code REST Client.
+@gateway = http://localhost:8080
+
+### 1. Register a customer
+POST {{gateway}}/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "name": "Kai",
+  "email": "kai@example.com",
+  "phone": "9876543210",
+  "password": "Secret1234"
+}
+
+### 2. Log in (copy accessToken and refreshToken from the response)
+# @name login
+POST {{gateway}}/api/v1/auth/login
+Content-Type: application/json
+
+{ "email": "kai@example.com", "password": "Secret1234" }
+
+### 3. Who am I
+GET {{gateway}}/api/v1/users/me
+Authorization: Bearer {{login.response.body.accessToken}}
+
+### 4. Apply to become a seller
+POST {{gateway}}/api/v1/sellers/applications
+Authorization: Bearer {{login.response.body.accessToken}}
+Content-Type: application/json
+
+{
+  "businessName": "Kai Crafts",
+  "businessEmail": "shop@example.com",
+  "businessPhone": "9876543210",
+  "taxId": "29ABCDE1234F1Z5",
+  "pickupAddress": "12 MG Road, Bengaluru 560001"
+}
+
+### 5. Log in as the bootstrap admin (from .env)
+# @name admin
+POST {{gateway}}/api/v1/auth/login
+Content-Type: application/json
+
+{ "email": "admin@bigbazaar.local", "password": "change-me-Admin123" }
+
+### 6. Review queue
+# @name queue
+GET {{gateway}}/api/v1/admin/sellers?status=PENDING_VERIFICATION
+Authorization: Bearer {{admin.response.body.accessToken}}
+
+### 7. Approve with a reason
+POST {{gateway}}/api/v1/admin/sellers/{{queue.response.body.content[0].id}}/decisions
+Authorization: Bearer {{admin.response.body.accessToken}}
+Content-Type: application/json
+
+{ "decision": "APPROVE", "reason": "KYC documents verified" }
+
+### 8. Rotate the refresh token
+POST {{gateway}}/api/v1/auth/refresh
+Content-Type: application/json
+
+{ "refreshToken": "{{login.response.body.refreshToken}}" }
+
+### 9. Log out
+POST {{gateway}}/api/v1/auth/logout
+Content-Type: application/json
+
+{ "refreshToken": "{{login.response.body.refreshToken}}" }

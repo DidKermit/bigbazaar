@@ -1,0 +1,11 @@
+target/
+*.class
+*.log
+.env
+.idea/
+*.iml
+.vscode/
+.DS_Store
+__pycache__/
+.venv/
+node_modules/

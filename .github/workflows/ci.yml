@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Build and test (Testcontainers uses the runner's Docker)
+        run: mvn -B verify
+      - name: Build images
+        run: |
+          docker build -f services/identity-service/Dockerfile -t bigbazaar/identity-service:ci .
+          docker build -f services/api-gateway/Dockerfile -t bigbazaar/api-gateway:ci .
