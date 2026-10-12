@@ -41,6 +41,8 @@ bigbazaar:
     issuer: ${JWT_ISSUER:bigbazaar-identity}
     # PKCS#8 RSA key; only identity-service holds it. Public keys: /.well-known/jwks.json
     private-key-location: ${JWT_PRIVATE_KEY_PATH:file:infra/keys/jwt-private.pem}
+    # Retired public keys still trusted after a rotation (comma-separated); see infra/keys/rotate-signing-key.sh
+    previous-public-key-locations: ${JWT_PREVIOUS_PUBLIC_KEYS:}
     access-token-ttl: ${JWT_ACCESS_TTL:15m}
     refresh-token-ttl: ${JWT_REFRESH_TTL:14d}
   mfa:

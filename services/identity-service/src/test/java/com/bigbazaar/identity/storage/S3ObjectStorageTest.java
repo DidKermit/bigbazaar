@@ -61,16 +61,18 @@ class S3ObjectStorageTest {
         assertThat(storage.head("sellers/s1/documents/d1.pdf")).isEmpty();
     }
 
+    /**
+     * S3 refuses a PUT whose headers differ from the signed ones. S3Mock doesn't check signatures, so
+     * this asserts what the adapter controls: content type and length are part of the signature.
+     */
     @Test
-    void signedLinkRefusesADifferentContentType() throws Exception {
-        ObjectStorage storage = storage();
-        byte[] body = "%PDF-1.7".getBytes();
-        var target = storage.presignUpload("sellers/s1/documents/d2.pdf", "application/pdf", body.length,
+    void linkSignsContentTypeAndLength() {
+        var target = storage().presignUpload("sellers/s1/documents/d2.pdf", "application/pdf", 8,
                 Duration.ofMinutes(5));
-        var response = http.send(HttpRequest.newBuilder(target.url())
-                        .header("Content-Type", "text/html")
-                        .PUT(HttpRequest.BodyPublishers.ofByteArray(body)).build(),
-                HttpResponse.BodyHandlers.discarding());
-        assertThat(response.statusCode()).isEqualTo(403);
+        String signedHeaders = java.net.URLDecoder.decode(target.url().getQuery(),
+                java.nio.charset.StandardCharsets.UTF_8).replaceAll(".*X-Amz-SignedHeaders=([^&]*).*", "$1");
+        assertThat(signedHeaders.split(";")).contains("content-type", "content-length", "host");
+        assertThat(target.headers()).containsEntry("content-type", "application/pdf");
+        assertThat(target.url().getQuery()).contains("X-Amz-Expires=300");
     }
 }

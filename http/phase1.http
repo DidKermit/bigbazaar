@@ -36,6 +36,24 @@ Content-Type: application/json
   "pickupAddress": "12 MG Road, Bengaluru 560001"
 }
 
+### 4a. Ask for an upload link for a KYC document (sizeBytes must match the file; sample-kyc.pdf is a placeholder)
+# @name upload
+POST {{gateway}}/api/v1/sellers/me/documents/uploads
+Authorization: Bearer {{login.response.body.accessToken}}
+Content-Type: application/json
+
+{ "documentType": "PAN", "contentType": "application/pdf", "sizeBytes": 142, "fileName": "pan.pdf" }
+
+### 4b. Upload the file to the link, with exactly the headers it lists
+PUT {{upload.response.body.upload.url}}
+Content-Type: application/pdf
+
+< ./sample-kyc.pdf
+
+### 4c. Confirm: the service checks the size and that it really is a PDF
+POST {{gateway}}/api/v1/sellers/me/documents/{{upload.response.body.document.id}}/confirm
+Authorization: Bearer {{login.response.body.accessToken}}
+
 ### 5. Log in as the bootstrap admin (from .env). Status is AUTHENTICATED with mfaEnrollmentRequired.
 # @name adminPwd
 POST {{gateway}}/api/v1/auth/login
@@ -82,6 +100,10 @@ Authorization: Bearer {{admin.response.body.accessToken}}
 Content-Type: application/json
 
 { "decision": "APPROVE", "reason": "KYC documents verified" }
+
+### 7a. Read the audit trail for that seller (who decided, why, with which correlation ID)
+GET {{gateway}}/api/v1/admin/audit-events?entityType=Seller&entityId={{queue.response.body.content[0].id}}
+Authorization: Bearer {{admin.response.body.accessToken}}
 
 ### 8. Rotate the refresh token
 POST {{gateway}}/api/v1/auth/refresh

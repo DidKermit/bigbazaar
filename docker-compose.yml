@@ -86,7 +86,8 @@ services:
       DB_PASSWORD: identity_svc_dev
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
-      JWT_PRIVATE_KEY_PATH: file:/run/secrets/jwt-private.pem
+      JWT_PRIVATE_KEY_PATH: file:/run/secrets/jwt/jwt-private.pem
+      JWT_PREVIOUS_PUBLIC_KEYS: ${JWT_PREVIOUS_PUBLIC_KEYS:-}
       MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?run infra/keys/generate-dev-keys.sh and set MFA_ENCRYPTION_KEY in .env}
       # KYC documents: local disk in development, S3 (or any S3-compatible store) when STORAGE_PROVIDER=s3.
       STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
@@ -99,7 +100,8 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY:-}
     volumes:
       # Only identity-service gets the private key; everyone else uses the public JWKS.
-      - ./infra/keys/jwt-private.pem:/run/secrets/jwt-private.pem:ro
+      # The whole folder is mounted so retired public keys are visible after a rotation.
+      - ./infra/keys:/run/secrets/jwt:ro
       - uploads-data:/data/uploads
     ports: ["8081:8081"]
     depends_on:

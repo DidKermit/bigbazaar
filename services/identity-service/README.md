@@ -22,9 +22,12 @@ Publishes to the `identity-events` topic.
 | GET | `/.well-known/jwks.json` | public | Public signing key(s) for token verification | |
 | POST | `/sellers/applications` | customer | Apply, or re-apply after rejection | FR-SELLER-01 |
 | GET | `/sellers/me` | applicant | Application, documents, status history | FR-SELLER-05 |
-| POST | `/sellers/me/documents` | applicant | Register an uploaded KYC document | |
+| POST | `/sellers/me/documents/uploads` | applicant | Ask for a short-lived upload link (PDF, JPEG or PNG, up to 10 MB) | FR-SELLER-04 |
+| POST | `/sellers/me/documents/{id}/confirm` | applicant | After uploading: checks size and file signature, marks it `UPLOADED` | FR-SELLER-04 |
+| GET | `/sellers/me/documents/{id}/link` | applicant | Short-lived download link to one's own document | |
 | GET | `/admin/sellers?status=` | admin | Review queue, paginated | |
 | GET | `/admin/sellers/{id}` | admin | Detail with immutable history | FR-SELLER-03 |
+| GET | `/admin/sellers/{id}/documents/{docId}/link` | admin | Short-lived link to review a KYC document | FR-SELLER-03 |
 | POST | `/admin/sellers/{id}/decisions` | admin | `START_REVIEW`, `APPROVE`, `REJECT`, `SUSPEND`, `REINSTATE` + reason | FR-SELLER-02 |
 | POST | `/admin/users/{id}/suspend` | admin | Suspend + revoke all sessions | FR-AUTH-06 |
 | POST | `/admin/users/{id}/reactivate` | admin | Reactivate | |
@@ -53,10 +56,10 @@ grants the `SELLER` role; suspension removes it.
 ## Events (`identity-events`, key = aggregate id)
 
 `UserRegistered`, `UserSuspended`, `UserReactivated`, `MfaEnabled`, `MfaDisabled`, `MfaReset`,
-`SellerApplicationSubmitted`,
+`SellerApplicationSubmitted`, `SellerDocumentUploaded`,
 `SellerReviewStarted`, `SellerApproved`, `SellerRejected`, `SellerSuspended`, `SellerReinstated`.
 Catalog will build its `approved_seller_projection` from the seller events; the audit service will
-record all of them.
+records all of them (see audit-service).
 
 ## Security notes
 
@@ -73,6 +76,11 @@ record all of them.
   token revokes the whole chain.
 - Lockout: 5 wrong passwords lock the account for 15 minutes. Per-IP limits are at the gateway.
 - Suspended accounts are refused on every protected call, even with an unexpired access token.
+- Signing-key rotation: `infra/keys/rotate-signing-key.sh` keeps the old public key trusted and
+  published until it is removed, so nobody is logged out (ADR 0003).
+- KYC files never pass through the API as JSON. The applicant gets a 15-minute link that only accepts
+  the declared type and size, then confirms. The service reads the first bytes back and rejects files
+  whose content doesn't match the declared type. Unconfirmed uploads expire after 24 hours (ADR 0005).
 
 ## Failure handling
 
@@ -82,6 +90,9 @@ record all of them.
 | Several replicas | The relay locks rows with `FOR UPDATE SKIP LOCKED`, so each event is sent by one replica. Delivery is at-least-once; consumers dedupe on `eventId`. |
 | Two admins decide at once | Optimistic locking on `sellers.version`; the loser gets `409 CONCURRENT_MODIFICATION`. |
 | Two refreshes with one token | The token row is locked; the second call sees it rotated and the chain is revoked. |
+| Upload never confirmed | A scheduled job marks it `EXPIRED` and deletes any stored object. |
+| Uploaded file is not what it claims | Confirm returns `422 INVALID_DOCUMENT`; the object is deleted. |
+| Object storage down | Upload and link requests fail with 5xx; seller data is unaffected. |
 | Bootstrap admin on several replicas | The unique email index lets one win; the others log and continue. |
 
 ## Configuration
@@ -94,3 +105,7 @@ record all of them.
 | `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | |
 | `BOOTSTRAP_ADMIN_EMAIL`, `BOOTSTRAP_ADMIN_PASSWORD` | empty | creates the first admin |
 | `JWT_ACCESS_TTL`, `JWT_REFRESH_TTL` | `15m`, `14d` | |
+| `JWT_PREVIOUS_PUBLIC_KEYS` | empty | retired public keys still trusted after a rotation |
+| `STORAGE_PROVIDER` | `local` | `local` (disk, signed links via the gateway) or `s3` |
+| `STORAGE_LOCAL_DIR`, `STORAGE_PUBLIC_BASE_URL`, `STORAGE_SIGNING_KEY` | `./data/uploads`, gateway URL, random | local store |
+| `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_PATH_STYLE` | | S3 store; endpoint for S3-compatible services |

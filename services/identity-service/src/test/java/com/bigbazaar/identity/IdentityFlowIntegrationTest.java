@@ -49,6 +49,7 @@ class IdentityFlowIntegrationTest {
     @DynamicPropertySource
     static void keys(DynamicPropertyRegistry registry) {
         registry.add("bigbazaar.jwt.private-key-location", () -> "file:" + TestKeys.PRIVATE_KEY);
+        registry.add("bigbazaar.jwt.previous-public-key-locations", () -> "file:" + TestKeys.PREVIOUS_PUBLIC_KEY);
         registry.add("bigbazaar.mfa.encryption-key", () -> TestKeys.MFA_KEY);
         registry.add("bigbazaar.storage.provider", () -> "local");
         registry.add("bigbazaar.storage.local.directory", () -> TestKeys.STORAGE_DIR.toString());
@@ -427,9 +428,48 @@ class IdentityFlowIntegrationTest {
                 .andExpect(jsonPath("$.keys[0].alg").value("RS256"))
                 .andExpect(jsonPath("$.keys[0].kid").isNotEmpty())
                 .andReturn();
-        JsonNode key = json.readTree(result.getResponse().getContentAsString()).get("keys").get(0);
-        assertThat(key.has("d")).isFalse();
-        assertThat(key.has("p")).isFalse();
+        JsonNode keys = json.readTree(result.getResponse().getContentAsString()).get("keys");
+        assertThat(keys.size()).isEqualTo(2); // current key first, then the retired one
+        keys.forEach(key -> {
+            assertThat(key.has("d")).isFalse();
+            assertThat(key.has("p")).isFalse();
+        });
+    }
+
+    @Test
+    void tokensFromTheRetiredKeyStayValidAfterRotation() throws Exception {
+        String email = "rotation+" + UUID.randomUUID() + "@example.com";
+        register(email);
+        String current = login(email, "Secret1234").get("accessToken").asString();
+        String userId = json.readTree(new String(java.util.Base64.getUrlDecoder().decode(current.split("\\.")[1])))
+                .get("sub").asString();
+
+        mvc.perform(get("/api/v1/users/me").header("Authorization", "Bearer " + current))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/v1/users/me")
+                        .header("Authorization", "Bearer " + signedToken(TestKeys.PREVIOUS_KEY, userId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(email));
+        mvc.perform(get("/api/v1/users/me")
+                        .header("Authorization", "Bearer " + signedToken(TestKeys.newKeyPair(), userId)))
+                .andExpect(status().isUnauthorized());
+    }
+
+    /** A token as identity would have issued it, signed with the given key pair. */
+    private static String signedToken(java.security.KeyPair keyPair, String userId) throws Exception {
+        var publicKey = (java.security.interfaces.RSAPublicKey) keyPair.getPublic();
+        var jwk = new com.nimbusds.jose.jwk.RSAKey.Builder(publicKey)
+                .privateKey((java.security.interfaces.RSAPrivateKey) keyPair.getPrivate())
+                .keyID(new com.nimbusds.jose.jwk.RSAKey.Builder(publicKey).build().computeThumbprint().toString())
+                .build();
+        var now = java.time.Instant.now();
+        var claims = new com.nimbusds.jwt.JWTClaimsSet.Builder().issuer("bigbazaar-identity").subject(userId)
+                .issueTime(java.util.Date.from(now)).expirationTime(java.util.Date.from(now.plusSeconds(300)))
+                .claim("roles", List.of("CUSTOMER")).claim("amr", List.of("pwd")).build();
+        var jwt = new com.nimbusds.jwt.SignedJWT(new com.nimbusds.jose.JWSHeader.Builder(
+                com.nimbusds.jose.JWSAlgorithm.RS256).keyID(jwk.getKeyID()).build(), claims);
+        jwt.sign(new com.nimbusds.jose.crypto.RSASSASigner(jwk));
+        return jwt.serialize();
     }
 
     /** A fresh admin (role granted directly in the DB) so tests don't share MFA state. */

@@ -4,6 +4,7 @@
 |---|---|---|---|---|
 | api-gateway | 1 | 8080 | none (Redis for rate limits) | Built |
 | identity-service | 1 | 8081 | identity_db | Built |
+| audit-service | 1 | 8091 | platform_db | Built |
 | catalog-service | 2 | 8082 | catalog_db | Planned |
 | commerce-service | 2 | 8083 | commerce_db | Planned |
 | payment-service | 3 | 8084 | payment_db | Planned |

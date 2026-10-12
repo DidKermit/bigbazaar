@@ -22,8 +22,10 @@ bigbazaar/
 ├── services/
 │   ├── identity-service/        Users, roles, JWT + refresh tokens, seller onboarding  (port 8081)
 │   ├── api-gateway/             Routing, CORS, Redis rate limits, correlation IDs, JWT edge check (8080)
+│   ├── audit-service/           Append-only log of every domain event, admin search  (port 8091)
 │   └── README.md                Planned services and their ports
 ├── infra/postgres/              Creates one database + login per service for local dev
+├── infra/keys/                  Dev key generation and signing-key rotation scripts
 ├── docs/adr/                    Architecture Decision Records
 ├── http/                        Example requests (IntelliJ / VS Code REST Client)
 └── docker-compose.yml           PostgreSQL, Redis, Kafka, (Kafka UI, OpenSearch) and the services
@@ -44,7 +46,8 @@ docker compose --profile app up -d --build
 
 Everything is reached through the gateway on `http://localhost:8080`. Identity's Swagger UI is at
 `http://localhost:8081/swagger-ui.html`. Try the flow in [`http/phase1.http`](http/phase1.http):
-register, log in, apply as a seller, enroll the bootstrap admin's authenticator app, approve.
+register, log in, apply as a seller, upload a KYC document, enroll the bootstrap admin's
+authenticator app, review the document, approve, then read the audit trail.
 
 To run a service from your IDE instead, start only the infrastructure (`docker compose up -d`) and
 run identity-service from the repository root with `MFA_ENCRYPTION_KEY` set and
@@ -69,6 +72,17 @@ Integration tests use Testcontainers (real PostgreSQL and Kafka), so Docker must
 - Access tokens are RS256. Only identity holds the private key; everything else verifies with
   identity's public JWKS. Admin endpoints need a token from a login that passed MFA (`amr` has `mfa`).
 - No service reads another service's database. Cross-service data arrives as event projections.
+- Consumers are idempotent (`processed_events`) and park poison messages on `<topic>.DLT`.
+
+## Rotating the token signing key
+
+```bash
+infra/keys/rotate-signing-key.sh     # prints a JWT_PREVIOUS_PUBLIC_KEYS line for .env
+docker compose --profile app up -d identity-service
+```
+
+Nobody is logged out: old tokens stay valid until they expire. After 15 minutes remove the line
+from `.env`, delete the printed `.pub.pem` file and restart identity-service again.
 
 ## Architecture decisions
 
@@ -76,3 +90,5 @@ Integration tests use Testcontainers (real PostgreSQL and Kafka), so Docker must
 - [ADR 0002: Transactional outbox for events](docs/adr/0002-transactional-outbox.md)
 - [ADR 0003: RS256 tokens with rotating refresh tokens](docs/adr/0003-jwt-and-refresh-tokens.md)
 - [ADR 0004: Multi-factor authentication](docs/adr/0004-multi-factor-authentication.md)
+- [ADR 0005: KYC documents in object storage](docs/adr/0005-object-storage-for-documents.md)
+- [ADR 0006: Audit service as the first event consumer](docs/adr/0006-audit-service.md)
