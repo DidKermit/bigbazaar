@@ -5,6 +5,7 @@ COPY pom.xml .
 COPY libs/common/pom.xml libs/common/
 COPY services/identity-service/pom.xml services/identity-service/
 COPY services/api-gateway/pom.xml services/api-gateway/
+COPY services/audit-service/pom.xml services/audit-service/
 RUN mvn -B -q -pl services/api-gateway -am dependency:go-offline -DexcludeReactor=true || true
 COPY libs libs
 COPY services/api-gateway services/api-gateway

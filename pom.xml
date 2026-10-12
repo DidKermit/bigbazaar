@@ -22,6 +22,7 @@
         <module>libs/common</module>
         <module>services/identity-service</module>
         <module>services/api-gateway</module>
+        <module>services/audit-service</module>
     </modules>
 
     <properties>

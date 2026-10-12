@@ -21,3 +21,4 @@ jobs:
         run: |
           docker build -f services/identity-service/Dockerfile -t bigbazaar/identity-service:ci .
           docker build -f services/api-gateway/Dockerfile -t bigbazaar/api-gateway:ci .
+          docker build -f services/audit-service/Dockerfile -t bigbazaar/audit-service:ci .
