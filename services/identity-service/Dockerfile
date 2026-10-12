@@ -12,7 +12,8 @@ COPY services/identity-service services/identity-service
 RUN mvn -B -q -pl services/identity-service -am -DskipTests package
 
 FROM eclipse-temurin:21-jre-alpine
-RUN addgroup -S app && adduser -S app -G app
+RUN addgroup -S app && adduser -S app -G app \
+    && mkdir -p /data/uploads && chown app:app /data/uploads  # local KYC store; a new volume inherits this owner
 WORKDIR /app
 COPY --from=build /workspace/services/identity-service/target/identity-service-*.jar app.jar
 USER app

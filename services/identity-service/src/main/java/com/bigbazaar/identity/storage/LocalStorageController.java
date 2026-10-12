@@ -27,6 +27,8 @@ class LocalStorageController {
 
     private final LocalObjectStorage storage;
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(LocalStorageController.class);
+
     LocalStorageController(ObjectStorage storage) {
         this.storage = (LocalObjectStorage) storage;
     }
@@ -53,10 +55,12 @@ class LocalStorageController {
         try (InputStream body = request.getInputStream()) {
             storage.write(key, type, new BoundedInputStream(body, size));
         } catch (IOException e) {
+            log.warn("Upload failed key={}: {}", key, e.getMessage());
             storage.delete(key);
             return ResponseEntity.badRequest().build();
         }
         if (storage.head(key).map(o -> o.sizeBytes() != size).orElse(true)) {
+            log.warn("Upload size mismatch key={} expected={}", key, size);
             storage.delete(key);
             return ResponseEntity.badRequest().build();
         }
