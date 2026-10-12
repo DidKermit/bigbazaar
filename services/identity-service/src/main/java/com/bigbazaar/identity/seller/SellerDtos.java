@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public final class SellerDtos {
@@ -23,14 +24,15 @@ public final class SellerDtos {
             @NotBlank @Size(max = 500) String pickupAddress) {
     }
 
-    public record SellerDocumentRequest(
+    public record DocumentUploadRequest(
             @NotBlank @Pattern(regexp = "^(PAN|GST_CERTIFICATE|ID_PROOF|ADDRESS_PROOF|BANK_PROOF|OTHER)$")
             String documentType,
-            @NotBlank @Size(max = 500) String storageKey,
             @NotBlank @Pattern(regexp = "^(application/pdf|image/jpeg|image/png)$",
                     message = "must be application/pdf, image/jpeg or image/png")
             String contentType,
-            @Positive @jakarta.validation.constraints.Max(10 * 1024 * 1024) long sizeBytes) {
+            @Positive @jakarta.validation.constraints.Max(value = 10 * 1024 * 1024, message = "must be at most 10 MB")
+            long sizeBytes,
+            @Size(max = 200) String fileName) {
     }
 
     public record SellerDecisionRequest(
@@ -57,12 +59,22 @@ public final class SellerDtos {
         }
     }
 
-    public record SellerDocumentResponse(UUID id, String documentType, String storageKey, String contentType,
-                                         long sizeBytes, Instant uploadedAt) {
-        static SellerDocumentResponse from(SellerDocument document) {
-            return new SellerDocumentResponse(document.getId(), document.getDocumentType(), document.getStorageKey(),
-                    document.getContentType(), document.getSizeBytes(), document.getUploadedAt());
+    public record SellerDocumentResponse(UUID id, String documentType, String status, String contentType,
+                                         long sizeBytes, String fileName, Instant createdAt, Instant uploadedAt) {
+        static SellerDocumentResponse from(SellerDocument d) {
+            return new SellerDocumentResponse(d.getId(), d.getDocumentType(), d.getStatus().name(), d.getContentType(),
+                    d.getSizeBytes(), d.getOriginalFileName(), d.getCreatedAt(), d.getUploadedAt());
         }
+    }
+
+    /** Send the file with {@code method} to {@code url}, including every header in {@code headers}. */
+    public record UploadInstructions(String url, String method, Map<String, String> headers, Instant expiresAt) {
+    }
+
+    public record DocumentUploadResponse(SellerDocumentResponse document, UploadInstructions upload) {
+    }
+
+    public record DocumentLink(String url, Instant expiresAt) {
     }
 
     public record StatusHistoryEntry(SellerStatus fromStatus, SellerStatus toStatus, String reason, UUID actorId,

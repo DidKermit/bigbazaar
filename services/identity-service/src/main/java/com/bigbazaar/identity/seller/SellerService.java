@@ -8,7 +8,6 @@ import com.bigbazaar.identity.common.IdentityEvents;
 import com.bigbazaar.identity.outbox.OutboxWriter;
 import com.bigbazaar.identity.seller.SellerDtos.SellerApplicationRequest;
 import com.bigbazaar.identity.seller.SellerDtos.SellerDetailResponse;
-import com.bigbazaar.identity.seller.SellerDtos.SellerDocumentRequest;
 import com.bigbazaar.identity.seller.SellerDtos.SellerDocumentResponse;
 import com.bigbazaar.identity.seller.SellerDtos.SellerResponse;
 import com.bigbazaar.identity.seller.SellerDtos.StatusHistoryEntry;
@@ -16,7 +15,6 @@ import com.bigbazaar.identity.user.Role;
 import com.bigbazaar.identity.user.User;
 import com.bigbazaar.identity.user.UserService;
 import java.time.Clock;
-import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,8 +27,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class SellerService {
 
     private static final Logger log = LoggerFactory.getLogger(SellerService.class);
-    private static final Set<SellerStatus> DOCUMENT_UPLOAD_ALLOWED =
-            Set.of(SellerStatus.PENDING_VERIFICATION, SellerStatus.UNDER_REVIEW, SellerStatus.APPROVED);
 
     private final SellerRepository sellers;
     private final SellerStatusHistoryRepository history;
@@ -75,24 +71,6 @@ public class SellerService {
         return detail(findByUser(userId));
     }
 
-    @Transactional
-    public SellerDocumentResponse addDocument(UUID userId, SellerDocumentRequest request) {
-        userService.requireActive(userId);
-        Seller seller = findByUser(userId);
-        if (!DOCUMENT_UPLOAD_ALLOWED.contains(seller.getStatus())) {
-            throw new BusinessException(ErrorCode.INVALID_STATUS_TRANSITION,
-                    "Documents cannot be added while the seller is " + seller.getStatus() + ".");
-        }
-        String expectedPrefix = "sellers/" + seller.getId() + "/";
-        if (!request.storageKey().startsWith(expectedPrefix) || request.storageKey().contains("..")) {
-            throw new BusinessException(ErrorCode.VALIDATION_FAILED,
-                    "storageKey must be under " + expectedPrefix);
-        }
-        SellerDocument document = documents.save(new SellerDocument(seller.getId(), request.documentType(),
-                request.storageKey(), request.contentType(), request.sizeBytes(), clock.instant()));
-        return SellerDocumentResponse.from(document);
-    }
-
     @Transactional(readOnly = true)
     public Page<SellerResponse> list(SellerStatus status, Pageable pageable) {
         Page<Seller> page = status == null ? sellers.findAll(pageable) : sellers.findByStatus(status, pageable);
@@ -134,18 +112,18 @@ public class SellerService {
 
     private SellerDetailResponse detail(Seller seller) {
         return new SellerDetailResponse(SellerResponse.from(seller),
-                documents.findBySellerIdOrderByUploadedAtAsc(seller.getId()).stream()
+                documents.findBySellerIdOrderByCreatedAtAsc(seller.getId()).stream()
                         .map(SellerDocumentResponse::from).toList(),
                 history.findBySellerIdOrderByChangedAtAscIdAsc(seller.getId()).stream()
                         .map(StatusHistoryEntry::from).toList());
     }
 
-    private Seller findByUser(UUID userId) {
+    Seller findByUser(UUID userId) {
         return sellers.findByUserId(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.SELLER_NOT_FOUND, "No seller application found."));
     }
 
-    private Seller findById(UUID sellerId) {
+    Seller findById(UUID sellerId) {
         return sellers.findById(sellerId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.SELLER_NOT_FOUND, "Seller not found."));
     }

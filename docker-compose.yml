@@ -86,11 +86,23 @@ services:
       DB_PASSWORD: identity_svc_dev
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
-      JWT_PRIVATE_KEY_PATH: file:/run/secrets/jwt-private.pem
+      JWT_PRIVATE_KEY_PATH: file:/run/secrets/jwt/jwt-private.pem
+      JWT_PREVIOUS_PUBLIC_KEYS: ${JWT_PREVIOUS_PUBLIC_KEYS:-}
       MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?run infra/keys/generate-dev-keys.sh and set MFA_ENCRYPTION_KEY in .env}
+      # KYC documents: local disk in development, S3 (or any S3-compatible store) when STORAGE_PROVIDER=s3.
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      STORAGE_LOCAL_DIR: /data/uploads
+      STORAGE_PUBLIC_BASE_URL: ${STORAGE_PUBLIC_BASE_URL:-http://localhost:8080}
+      STORAGE_SIGNING_KEY: ${STORAGE_SIGNING_KEY:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-ap-south-1}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
     volumes:
       # Only identity-service gets the private key; everyone else uses the public JWKS.
-      - ./infra/keys/jwt-private.pem:/run/secrets/jwt-private.pem:ro
+      # The whole folder is mounted so retired public keys are visible after a rotation.
+      - ./infra/keys:/run/secrets/jwt:ro
+      - uploads-data:/data/uploads
     ports: ["8081:8081"]
     depends_on:
       postgres:
@@ -107,6 +119,7 @@ services:
       <<: *service-env
       REDIS_HOST: redis
       IDENTITY_SERVICE_URL: http://identity-service:8081
+      AUDIT_SERVICE_URL: http://audit-service:8091
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
     ports: ["8080:8080"]
     depends_on:
@@ -114,6 +127,28 @@ services:
         condition: service_healthy
       identity-service:
         condition: service_healthy
+      audit-service:
+        condition: service_healthy
+
+  audit-service:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: services/audit-service/Dockerfile
+    environment:
+      <<: *service-env
+      DB_URL: jdbc:postgresql://postgres:5432/platform_db
+      DB_USERNAME: platform_svc
+      DB_PASSWORD: platform_svc_dev
+    ports: ["8091:8091"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
 
 volumes:
   postgres-data:
+  uploads-data:

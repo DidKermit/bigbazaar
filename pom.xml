@@ -22,12 +22,14 @@
         <module>libs/common</module>
         <module>services/identity-service</module>
         <module>services/api-gateway</module>
+        <module>services/audit-service</module>
     </modules>
 
     <properties>
         <java.version>21</java.version>
         <spring-cloud.version>2025.1.3</spring-cloud.version>
         <springdoc.version>3.0.3</springdoc.version>
+        <awssdk.version>2.42.0</awssdk.version>
     </properties>
 
     <dependencyManagement>
@@ -36,6 +38,13 @@
                 <groupId>org.springframework.cloud</groupId>
                 <artifactId>spring-cloud-dependencies</artifactId>
                 <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>${awssdk.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

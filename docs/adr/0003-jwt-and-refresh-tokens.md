@@ -27,7 +27,9 @@ be able to cut off a suspended account quickly.
 ## Consequences
 
 - No shared secret to distribute. Only one file (the private key) needs protecting.
-- Today's rotation is a hard switch: tokens signed with the old key fail once identity restarts with
-  a new one, so users re-authenticate within one access-token lifetime. Publishing the next key in the
-  JWKS ahead of time (overlap rotation) is the next step once there are production users.
+- Rotation overlaps (added 2026-10-12): `infra/keys/rotate-signing-key.sh` saves the old public key and
+  creates a new private key. Identity then signs with the new key while still publishing and accepting
+  the old one (`JWT_PREVIOUS_PUBLIC_KEYS`). Verifiers see the new `kid` and refetch the JWKS. After one
+  access-token lifetime the old key is removed. Nobody is logged out. A suspected key leak is the
+  exception: rotate without keeping the old key, which logs everyone out by design.
 - Role changes (seller approval) appear in the next access token, within 15 minutes.

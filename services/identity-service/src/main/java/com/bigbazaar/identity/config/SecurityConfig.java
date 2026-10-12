@@ -15,7 +15,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
 import com.bigbazaar.identity.common.CorrelationIds;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -29,6 +28,11 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
+import com.nimbusds.jose.proc.JWSVerificationKeySelector;
+import com.nimbusds.jose.proc.SecurityContext;
+import com.nimbusds.jwt.proc.DefaultJWTProcessor;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
@@ -55,6 +59,8 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/.well-known/jwks.json").permitAll()
+                        // Local dev storage links: the HMAC signature in the URL is the authorization.
+                        .requestMatchers("/api/v1/storage/objects/**").permitAll()
                         // Admin actions need a token from a login that passed MFA.
                         .requestMatchers("/api/v1/admin/**").access(AuthorizationManagers.allOf(
                                 AuthorityAuthorizationManager.hasRole("ADMIN"),
@@ -96,11 +102,14 @@ public class SecurityConfig {
         return new NimbusJwtEncoder(new ImmutableJWKSet<>(new JWKSet(signingKeys.signingKey())));
     }
 
+    /** Verifies with the same key set that is published as JWKS: the current key plus any retired ones. */
     @Bean
     JwtDecoder jwtDecoder(SigningKeys signingKeys, JwtProperties properties) {
-        NimbusJwtDecoder decoder = NimbusJwtDecoder.withPublicKey(signingKeys.publicKey())
-                .signatureAlgorithm(SignatureAlgorithm.RS256)
-                .build();
+        var processor = new DefaultJWTProcessor<SecurityContext>();
+        processor.setJWSKeySelector(new JWSVerificationKeySelector<>(JWSAlgorithm.RS256,
+                new ImmutableJWKSet<>(signingKeys.publicJwkSet())));
+        processor.setJWTClaimsSetVerifier((claims, context) -> { }); // claims are checked by the validator below
+        NimbusJwtDecoder decoder = new NimbusJwtDecoder(processor);
         decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(properties.issuer()));
         return decoder;
     }

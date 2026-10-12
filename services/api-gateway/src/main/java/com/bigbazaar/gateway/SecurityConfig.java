@@ -33,6 +33,9 @@ public class SecurityConfig {
                 .authorizeExchange(auth -> auth
                         .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .pathMatchers(HttpMethod.POST, "/api/v1/auth/**").permitAll()
+                        // Signed storage links (local dev storage): the URL signature is the authorization.
+                        .pathMatchers(HttpMethod.GET, "/api/v1/storage/objects/**").permitAll()
+                        .pathMatchers(HttpMethod.PUT, "/api/v1/storage/objects/**").permitAll()
                         .pathMatchers("/actuator/health/**", "/actuator/info").permitAll()
                         .pathMatchers("/api/**").authenticated()
                         .anyExchange().denyAll())

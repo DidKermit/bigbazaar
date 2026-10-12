@@ -13,6 +13,7 @@ public final class IdentityEvents {
     public static final String MFA_ENABLED = "MfaEnabled";
     public static final String MFA_DISABLED = "MfaDisabled";
     public static final String MFA_RESET = "MfaReset";
+    public static final String SELLER_DOCUMENT_UPLOADED = "SellerDocumentUploaded";
     public static final String SELLER_APPLICATION_SUBMITTED = "SellerApplicationSubmitted";
     public static final String SELLER_REVIEW_STARTED = "SellerReviewStarted";
     public static final String SELLER_APPROVED = "SellerApproved";
@@ -27,6 +28,10 @@ public final class IdentityEvents {
     }
 
     public record MfaChanged(UUID userId, String method, String reason, UUID actorId) {
+    }
+
+    public record SellerDocumentUploaded(UUID sellerId, UUID documentId, String documentType, String contentType,
+                                         long sizeBytes, UUID actorId) {
     }
 
     public record SellerStatusChanged(UUID sellerId, UUID userId, String businessName, String fromStatus,

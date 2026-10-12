@@ -5,7 +5,9 @@ can sit behind a load balancer.
 
 ## Responsibilities
 
-- **Routing**: `/api/v1/auth/**`, `/users/**`, `/sellers/**`, `/admin/**` go to identity-service.
+- **Routing**: `/api/v1/auth/**`, `/users/**`, `/sellers/**`, `/admin/**` and the signed
+  `/api/v1/storage/objects/**` links go to identity-service; `/api/v1/admin/audit-events/**` goes to
+  audit-service (listed first so it wins over identity's `/admin/**`).
   Later phases add their routes in `application.yml`.
 - **Authentication boundary**: requests under `/api/**` need a valid RS256 JWT, checked against
   identity's public keys from `/.well-known/jwks.json` (fetched lazily, cached, refetched on an
@@ -31,4 +33,4 @@ can sit behind a load balancer.
 ## Configuration
 
 `JWT_JWK_SET_URI` (identity's JWKS URL), `JWT_ISSUER`, `REDIS_HOST`, `REDIS_PORT`,
-`IDENTITY_SERVICE_URL`, `CORS_ALLOWED_ORIGINS`.
+`IDENTITY_SERVICE_URL`, `AUDIT_SERVICE_URL`, `CORS_ALLOWED_ORIGINS`.

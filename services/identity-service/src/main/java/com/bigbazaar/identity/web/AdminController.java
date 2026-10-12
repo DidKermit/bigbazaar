@@ -2,6 +2,8 @@ package com.bigbazaar.identity.web;
 
 import com.bigbazaar.identity.mfa.MfaDtos.AdminResetRequest;
 import com.bigbazaar.identity.mfa.MfaService;
+import com.bigbazaar.identity.seller.SellerDocumentService;
+import com.bigbazaar.identity.seller.SellerDtos.DocumentLink;
 import com.bigbazaar.identity.seller.SellerDtos.SellerDecisionRequest;
 import com.bigbazaar.identity.seller.SellerDtos.SellerDetailResponse;
 import com.bigbazaar.identity.seller.SellerDtos.SellerResponse;
@@ -40,11 +42,14 @@ public class AdminController {
     private final SellerService sellerService;
     private final UserService userService;
     private final MfaService mfaService;
+    private final SellerDocumentService documentService;
 
-    public AdminController(SellerService sellerService, UserService userService, MfaService mfaService) {
+    public AdminController(SellerService sellerService, UserService userService, MfaService mfaService,
+                           SellerDocumentService documentService) {
         this.sellerService = sellerService;
         this.userService = userService;
         this.mfaService = mfaService;
+        this.documentService = documentService;
     }
 
     @GetMapping("/sellers")
@@ -58,6 +63,12 @@ public class AdminController {
     @GetMapping("/sellers/{sellerId}")
     public SellerDetailResponse seller(@PathVariable UUID sellerId) {
         return sellerService.get(sellerId);
+    }
+
+    @GetMapping("/sellers/{sellerId}/documents/{documentId}/link")
+    @Operation(summary = "A 5-minute link to view a seller's uploaded document")
+    public DocumentLink documentLink(@PathVariable UUID sellerId, @PathVariable UUID documentId) {
+        return documentService.adminDocumentLink(sellerId, documentId);
     }
 
     @PostMapping("/sellers/{sellerId}/decisions")

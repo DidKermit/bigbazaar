@@ -5,13 +5,15 @@ COPY pom.xml .
 COPY libs/common/pom.xml libs/common/
 COPY services/identity-service/pom.xml services/identity-service/
 COPY services/api-gateway/pom.xml services/api-gateway/
+COPY services/audit-service/pom.xml services/audit-service/
 RUN mvn -B -q -pl services/identity-service -am dependency:go-offline -DexcludeReactor=true || true
 COPY libs libs
 COPY services/identity-service services/identity-service
 RUN mvn -B -q -pl services/identity-service -am -DskipTests package
 
 FROM eclipse-temurin:21-jre-alpine
-RUN addgroup -S app && adduser -S app -G app
+RUN addgroup -S app && adduser -S app -G app \
+    && mkdir -p /data/uploads && chown app:app /data/uploads  # local KYC store; a new volume inherits this owner
 WORKDIR /app
 COPY --from=build /workspace/services/identity-service/target/identity-service-*.jar app.jar
 USER app
