@@ -1,0 +1,64 @@
+erDiagram
+  verified_seller_projection {
+    uuid seller_id PK "logical id"
+    varchar business_name
+    varchar gstin
+    varchar state_code
+    varchar status
+  }
+  categories {
+    uuid id PK
+    uuid parent_id FK
+    varchar name
+    boolean returnable
+    int return_window_days
+    numeric commission_rate
+  }
+  brands {
+    uuid id PK
+    varchar name UK
+    varchar status
+  }
+  products {
+    uuid id PK
+    uuid seller_id "logical id"
+    uuid category_id FK
+    uuid brand_id FK
+    varchar title
+    varchar status
+    varchar hsn_code
+    numeric gst_rate
+  }
+  product_variants {
+    uuid id PK
+    uuid product_id FK
+    varchar sku UK
+    jsonb attributes
+    numeric price
+    numeric mrp
+  }
+  product_images {
+    uuid id PK
+    uuid product_id FK
+    varchar storage_key
+  }
+  price_history {
+    bigserial id PK
+    uuid variant_id FK
+    numeric new_price
+    timestamptz changed_at
+  }
+  listing_checks {
+    bigserial id PK
+    uuid product_id FK
+    varchar rule
+    varchar outcome
+  }
+  categories |o--o{ categories : "parent_id"
+  categories ||--o{ products : "category_id"
+  brands |o--o{ products : "brand_id"
+  products ||--o{ product_variants : "product_id"
+  products ||--o{ product_images : "product_id"
+  product_variants |o--o{ product_images : "variant_id"
+  product_variants ||--o{ price_history : "variant_id"
+  products ||--o{ listing_checks : "product_id"

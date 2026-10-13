@@ -1,0 +1,24 @@
+sequenceDiagram
+  autonumber
+  actor Cu as Customer
+  participant F as Fulfillment
+  participant CR as Courier
+  participant K as Kafka
+  participant Co as Commerce
+  participant P as Payment
+  participant PSP as Payment provider
+  Cu->>F: POST /returns (order item, reason, photos)
+  F->>F: delivered? inside return window? category returnable?
+  F--)K: ReturnRequested
+  F->>CR: book reverse pickup
+  CR->>F: webhook picked up
+  F--)K: ReturnPickedUp
+  CR->>F: webhook delivered to seller
+  F->>F: seller marks resellable or not
+  F--)K: ReturnReceived
+  K--)Co: restock if resellable, stock movement RESTOCK
+  K--)P: ReturnReceived
+  P->>PSP: refund to original method
+  PSP-->>P: refund done
+  P->>P: refund COMPLETED, reversing ledger entries
+  P--)K: RefundCompleted

@@ -1,0 +1,47 @@
+erDiagram
+  product_features {
+    uuid product_id PK "logical id"
+    uuid category_id "logical id"
+    numeric min_price
+    boolean active
+  }
+  user_activity {
+    bigserial id PK
+    uuid user_id "logical id"
+    varchar activity_type
+    uuid product_id FK
+    timestamptz occurred_at
+  }
+  user_preferences {
+    uuid user_id PK "logical id"
+  }
+  ai_requests {
+    uuid id PK
+    varchar request_type
+    int latency_ms
+    varchar status
+  }
+  recommendation_logs {
+    uuid id PK
+    uuid user_id "logical id"
+    varchar context
+    varchar algorithm_version
+  }
+  recommendation_items {
+    bigserial id PK
+    uuid log_id FK
+    uuid product_id FK
+    int rank
+    jsonb reasons
+  }
+  product_similarity {
+    uuid product_id PK, FK
+    uuid similar_product_id PK, FK
+    numeric score
+  }
+  product_features |o--o{ user_activity : "product_id"
+  ai_requests |o--o{ recommendation_logs : "ai_request_id"
+  recommendation_logs ||--o{ recommendation_items : "log_id"
+  product_features ||--o{ recommendation_items : "product_id"
+  product_features ||--o{ product_similarity : "product_id"
+  product_features ||--o{ product_similarity : "similar_product_id"

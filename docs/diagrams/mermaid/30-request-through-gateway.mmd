@@ -1,0 +1,23 @@
+sequenceDiagram
+  autonumber
+  participant B as Browser (Angular)
+  participant G as API gateway
+  participant R as Redis
+  participant S as Service
+  participant DB as Service database
+  B->>G: HTTPS request + Bearer access token
+  G->>G: add X-Correlation-Id if missing
+  G->>R: rate-limit counter for this user or IP
+  alt over the limit
+    G-->>B: 429 Too Many Requests (ApiError)
+  end
+  G->>G: verify RS256 signature with cached JWKS, check expiry
+  alt token missing or invalid on a protected path
+    G-->>B: 401 Unauthorized (ApiError)
+  end
+  G->>S: forward request + correlation id
+  S->>S: check role, MFA claim and ownership
+  S->>DB: read or write (one transaction, outbox row if a fact changed)
+  DB-->>S: result
+  S-->>G: JSON response
+  G-->>B: response with X-Correlation-Id

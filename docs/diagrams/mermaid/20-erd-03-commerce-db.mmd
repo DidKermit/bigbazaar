@@ -1,0 +1,97 @@
+erDiagram
+  product_projection {
+    uuid variant_id PK "logical id"
+    uuid product_id "logical id"
+    uuid seller_id "logical id"
+    numeric price
+    varchar status
+  }
+  inventory {
+    uuid variant_id PK, FK
+    uuid seller_id "logical id"
+    int on_hand_quantity
+    int reserved_quantity
+  }
+  stock_reservations {
+    uuid id PK
+    uuid variant_id FK
+    uuid order_id FK
+    int quantity
+    varchar status
+    timestamptz expires_at
+  }
+  stock_movements {
+    bigserial id PK
+    uuid variant_id FK
+    varchar movement_type
+    int quantity_delta
+    timestamptz created_at
+  }
+  carts {
+    uuid id PK
+    uuid user_id UK "logical id"
+  }
+  cart_items {
+    uuid id PK
+    uuid cart_id FK
+    uuid variant_id FK
+    int quantity
+  }
+  wishlists {
+    uuid id PK
+    uuid user_id UK "logical id"
+  }
+  wishlist_items {
+    uuid id PK
+    uuid wishlist_id FK
+    uuid product_id "logical id"
+    numeric price_at_add
+  }
+  orders {
+    uuid id PK
+    varchar order_number UK
+    uuid user_id "logical id"
+    varchar status
+    numeric total_amount
+  }
+  seller_orders {
+    uuid id PK
+    uuid order_id FK
+    uuid seller_id "logical id"
+    varchar status
+    numeric total_amount
+    timestamptz dispatch_deadline_at
+  }
+  order_items {
+    uuid id PK
+    uuid order_id FK
+    uuid seller_order_id FK
+    uuid variant_id "logical id"
+    int quantity
+    numeric unit_price
+    varchar status
+  }
+  order_status_history {
+    bigserial id PK
+    uuid order_id FK
+    varchar to_status
+    timestamptz changed_at
+  }
+  idempotency_keys {
+    uuid user_id PK "logical id"
+    varchar idempotency_key PK
+    uuid order_id FK
+  }
+  product_projection ||--o| inventory : "variant_id"
+  inventory ||--o{ stock_reservations : "variant_id"
+  orders ||--o{ stock_reservations : "order_id"
+  inventory ||--o{ stock_movements : "variant_id"
+  carts ||--o{ cart_items : "cart_id"
+  product_projection ||--o{ cart_items : "variant_id"
+  wishlists ||--o{ wishlist_items : "wishlist_id"
+  orders ||--o{ seller_orders : "order_id"
+  orders ||--o{ order_items : "order_id"
+  seller_orders ||--o{ order_items : "seller_order_id"
+  orders ||--o{ order_status_history : "order_id"
+  seller_orders |o--o{ order_status_history : "seller_order_id"
+  orders |o--o{ idempotency_keys : "order_id"

@@ -1,0 +1,31 @@
+sequenceDiagram
+  autonumber
+  actor Cu as Customer
+  participant F as Fulfillment
+  participant Co as Commerce
+  participant K as Kafka
+  participant P as Payment
+  participant PSP as Payment provider
+  Cu->>F: GET serviceability for pincode
+  F-->>Cu: deliverable, estimated date
+  Cu->>Co: POST /checkout (Idempotency-Key)
+  Note over Co: key seen before? return the saved order<br/>revalidate price and stock<br/>ONE transaction: order, seller_orders,<br/>items with snapshots, reservations (15 min),<br/>outbox row OrderCreated
+  Co-->>Cu: 201 order PAYMENT_PENDING
+  Co--)K: OrderCreated
+  K--)P: OrderCreated
+  P->>P: create payment PENDING, provider order
+  Cu->>P: pay
+  P->>PSP: create payment
+  PSP-->>Cu: UPI / card page
+  PSP->>P: signed webhook (deduplicated)
+  P->>PSP: verify status on the backend
+  alt success
+    Note over P: payment CAPTURED<br/>ledger entries, outbox row
+    P--)K: PaymentSucceeded
+    K--)Co: PaymentSucceeded
+    Note over Co: order CONFIRMED, reservation CONFIRMED,<br/>stock movement, dispatch deadlines set
+  else failure or timeout
+    P--)K: PaymentFailed
+    K--)Co: PaymentFailed
+    Note over Co: order PAYMENT_FAILED,<br/>release reservation, stock movement
+  end

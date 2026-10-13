@@ -1,0 +1,42 @@
+flowchart TB
+  WEB["Angular web app<br/>/shop · /seller · /admin"]
+  LB["Load balancer (HTTPS)"]
+  GW["API gateway (Spring Cloud Gateway)<br/>JWT check · rate limit · CORS · correlation id"]
+  RD[("Redis<br/>rate limits · cache")]
+
+  ID["Identity<br/>users · MFA<br/>sellers · KYC"]
+  CAT["Catalog<br/>products<br/>listing checks"]
+  COM["Commerce<br/>stock · cart<br/>orders"]
+  PAY["Payment and<br/>settlement<br/>ledger · invoices"]
+  FUL["Fulfillment<br/>shipments<br/>returns"]
+  TR["Trust<br/>reviews<br/>scores"]
+  SR["Search"]
+  REC["Recommen-<br/>dation"]
+  NOT["Notification"]
+  INS["Insights<br/>dashboards<br/>reports"]
+  AUD["Audit<br/>append-only log<br/>tickets"]
+
+  K[("Kafka · domain events<br/>each service publishes through its outbox<br/>and consumes the topics it needs")]
+  PG[("PostgreSQL<br/>one database per service")]
+  OS[("OpenSearch")]
+  OB[("Object storage")]
+  AIS["AI service<br/>Python FastAPI"]
+
+  KYC(["KYC sandbox"])
+  PSP(["Payment and<br/>payout provider"])
+  CUR(["Courier"])
+  MSG(["Email and SMS"])
+  LLM(["LLM provider"])
+
+  WEB --> LB --> GW
+  GW -.- RD
+  GW --> ID & CAT & COM & PAY & FUL & TR & SR & REC & NOT & INS & AUD
+  ID & CAT & COM & PAY & FUL & TR & SR & REC & NOT & INS & AUD <--> K
+  K ~~~ PG & OS & OB
+  ID --> KYC
+  PAY --> PSP
+  FUL --> CUR
+  NOT --> MSG
+  REC --> AIS --> LLM
+  SR --> OS
+  PSP & CUR -. webhooks .-> GW

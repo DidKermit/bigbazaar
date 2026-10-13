@@ -1,0 +1,21 @@
+sequenceDiagram
+  autonumber
+  participant K as Kafka
+  participant P as Payment
+  participant L as Ledger (in Payment)
+  participant J as Settlement job
+  participant PO as Payout provider
+  K--)P: PaymentSucceeded
+  P->>L: debit customer payments, credit seller payable, commission, fees
+  P->>P: GST invoice per seller order (CGST+SGST or IGST), PDF to storage
+  P--)K: InvoiceGenerated
+  K--)P: OrderDelivered
+  P->>P: hold until the return window closes
+  Note over P: window closed and no open return: amount becomes payable
+  J->>J: run on the settlement cycle (locked, idempotent)
+  J->>L: per seller: payable - commission - fees - TCS - TDS - refunds
+  J->>P: settlement + settlement_items
+  J->>PO: payout
+  PO-->>J: completed
+  J->>L: debit seller payable, credit payouts
+  J--)K: PayoutCompleted

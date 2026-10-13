@@ -1,0 +1,54 @@
+flowchart LR
+  GW["API gateway"] --> SEC["Security filter chain<br/>JWT · roles · MFA claim"]
+
+  subgraph Web["Controllers (HTTP)"]
+    AC["AuthController<br/>/api/v1/auth"]
+    UC["UserController<br/>/users/me"]
+    MC["MfaController<br/>/users/me/mfa"]
+    SC["SellerController<br/>/api/v1/sellers"]
+    ADC["AdminController<br/>/api/v1/admin"]
+    JW["JwksController<br/>/.well-known/jwks.json"]
+  end
+
+  subgraph Domain["Services (business rules)"]
+    AS["AuthService<br/>login · refresh rotation · logout"]
+    ATI["AccessTokenIssuer + SigningKeys<br/>RS256, rotatable"]
+    MS["MfaService<br/>TOTP · recovery codes · challenges"]
+    US["UserService"]
+    SS["SellerService<br/>applications · admin decisions"]
+    SVS["SellerVerificationService<br/>four KYC checks"]
+    SDS["SellerDocumentService<br/>upload links · file checks"]
+  end
+
+  subgraph Jobs["Scheduled jobs"]
+    SVW["SellerVerificationWorker<br/>every 2 s"]
+    OR["OutboxRelay<br/>every 1 s"]
+  end
+
+  subgraph Out["Repositories and adapters"]
+    REPO["JPA repositories<br/>+ OutboxWriter"]
+    KP["KycProvider<br/>Mock · Sandbox"]
+    ST["ObjectStorage<br/>Local · S3"]
+  end
+
+  DB[("identity_db")]
+  K[("Kafka<br/>identity-events")]
+  EXT(["sandbox.co.in"])
+  OB[("Object storage")]
+
+  SEC --> Web
+  AC --> AS & MS
+  UC --> US
+  MC --> MS
+  SC --> SS & SDS
+  ADC --> SS & US & MS
+  JW --> ATI
+  AS --> ATI
+  SS --> SVS
+  SVW --> SVS
+  AS & MS & US & SS & SVS & SDS --> REPO
+  SVS --> KP --> EXT
+  SDS --> ST --> OB
+  REPO --> DB
+  OR --> DB
+  OR --> K

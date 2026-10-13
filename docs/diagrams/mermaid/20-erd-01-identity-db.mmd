@@ -1,0 +1,96 @@
+erDiagram
+  users {
+    uuid id PK
+    varchar name
+    varchar email UK
+    varchar phone
+    varchar status
+  }
+  roles {
+    varchar name PK
+  }
+  user_roles {
+    uuid user_id PK, FK
+    varchar role PK, FK
+  }
+  addresses {
+    uuid id PK
+    uuid user_id FK
+    varchar city
+    varchar state
+    varchar postal_code
+  }
+  phone_verifications {
+    uuid id PK
+    uuid user_id FK
+    varchar phone
+    timestamptz expires_at
+    timestamptz verified_at
+  }
+  user_mfa {
+    uuid user_id PK, FK
+    varchar status
+  }
+  mfa_recovery_codes {
+    uuid id PK
+    uuid user_id FK
+    timestamptz used_at
+  }
+  mfa_challenges {
+    uuid id PK
+    uuid user_id FK
+    timestamptz expires_at
+  }
+  refresh_tokens {
+    uuid id PK
+    uuid user_id FK
+    uuid family_id
+    timestamptz expires_at
+    timestamptz revoked_at
+  }
+  sellers {
+    uuid id PK
+    uuid user_id FK, UK
+    varchar business_name
+    varchar tax_id
+    varchar status
+  }
+  seller_documents {
+    uuid id PK
+    uuid seller_id FK
+    varchar document_type
+    varchar storage_key UK
+    varchar status
+  }
+  seller_verifications {
+    uuid id PK
+    uuid seller_id FK
+    varchar status
+    int attempts
+  }
+  seller_verification_checks {
+    bigserial id PK
+    uuid verification_id FK
+    varchar check_type
+    varchar outcome
+  }
+  seller_status_history {
+    bigserial id PK
+    uuid seller_id FK
+    varchar to_status
+    uuid actor_id
+    timestamptz changed_at
+  }
+  users ||--o{ user_roles : "user_id"
+  roles ||--o{ user_roles : "role"
+  users ||--o{ addresses : "user_id"
+  users ||--o{ phone_verifications : "user_id"
+  users ||--o| user_mfa : "user_id"
+  users ||--o{ mfa_recovery_codes : "user_id"
+  users ||--o{ mfa_challenges : "user_id"
+  users ||--o{ refresh_tokens : "user_id"
+  users ||--o| sellers : "user_id"
+  sellers ||--o{ seller_documents : "seller_id"
+  sellers ||--o{ seller_verifications : "seller_id"
+  seller_verifications ||--o{ seller_verification_checks : "verification_id"
+  sellers ||--o{ seller_status_history : "seller_id"

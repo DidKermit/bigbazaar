@@ -1,0 +1,26 @@
+sequenceDiagram
+  autonumber
+  actor S as Seller
+  participant C as Catalog
+  participant AI as AI service
+  participant K as Kafka
+  participant Co as Commerce
+  participant SR as Search
+  actor A as Admin
+  S->>C: POST /products (HSN, GST rate, legal fields, variants)
+  C->>C: seller in verified_seller_projection?
+  C->>C: status PENDING_CHECKS
+  C->>C: rules: banned items and words, required details, image size, brand
+  C->>AI: category fit and wording help
+  AI-->>C: suggestion with confidence
+  alt all pass
+    C->>C: ACTIVE, ProductPublished
+  else clear failure
+    C->>C: REJECTED with fixable reason, ListingRejected
+  else unsure
+    C->>C: PENDING_APPROVAL
+    A->>C: approve or reject with reason (MFA)
+  end
+  C--)K: ProductPublished
+  K--)Co: update product_projection
+  K--)SR: index product

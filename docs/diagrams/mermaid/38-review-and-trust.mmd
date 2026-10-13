@@ -1,0 +1,19 @@
+sequenceDiagram
+  autonumber
+  actor Cu as Customer
+  participant K as Kafka
+  participant T as Trust
+  actor A as Admin
+  K--)T: OrderDelivered, store delivered_item_projection
+  Cu->>T: POST /reviews (order item, rating, text)
+  T->>T: delivered to this user? one review per item?
+  T->>T: fake-review rules: burst, seller-linked, near-duplicate text
+  alt clean
+    T--)K: ReviewPublished
+  else suspicious
+    T--)K: ReviewFlagged
+    A->>T: uphold or dismiss with reason (MFA)
+  end
+  T->>T: recalculate product and seller score, score_history row
+  T--)K: ProductTrustScoreUpdated, SellerTrustScoreUpdated
+  Note over K: Catalog, Search, Recommendation and Insights consume the score updates

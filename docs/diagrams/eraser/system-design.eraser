@@ -1,0 +1,99 @@
+// BigBazaar system design (SRS v1.1, sections 3.1, 3.4, 7 and 14)
+// Paste into Eraser: new diagram > Diagram as code > Cloud architecture.
+// Solid arrows: REST calls. Dotted arrows: Kafka events or provider webhooks.
+
+title BigBazaar system design
+direction right
+colorMode pastel
+styleMode shadow
+typeface clean
+
+// ---------------------------------------------------------------- clients
+Clients [icon: users, color: gray] {
+  Web App [icon: angular, label: "Angular web app: shop, seller, admin"]
+}
+
+// ---------------------------------------------------------------- edge
+Edge [icon: shield, color: blue] {
+  Load Balancer [icon: server, label: "Load balancer (HTTPS)"]
+  API Gateway [icon: spring, label: "API gateway: JWT, rate limit, CORS, correlation id"]
+}
+
+// ---------------------------------------------------------------- services
+Services [icon: java, color: green] {
+  Identity and Records [color: green] {
+    Identity [icon: spring, label: "Identity: users, MFA, sellers, KYC"]
+    Audit [icon: spring, label: "Audit: append-only log, tickets"]
+  }
+  Buying and Money [color: orange] {
+    Catalog [icon: spring, label: "Catalog: products, listing checks"]
+    Commerce [icon: spring, label: "Commerce: stock, cart, orders"]
+    Payment [icon: spring, label: "Payment and settlement: ledger, invoices, payouts"]
+    Fulfillment [icon: spring, label: "Fulfillment: shipments, returns"]
+  }
+  Discovery and Insight [color: purple] {
+    Search [icon: spring]
+    Recommendation [icon: spring]
+    Trust [icon: spring, label: "Trust: reviews, scores"]
+    Notification [icon: spring]
+    Insights [icon: spring, label: "Insights: dashboards, reports"]
+  }
+}
+
+AI Service [icon: python, color: purple, label: "AI service (Python FastAPI)"]
+
+// ---------------------------------------------------------------- data
+Data [icon: database, color: blue] {
+  Kafka [icon: kafka, label: "Kafka: domain events (outbox relay)"]
+  PostgreSQL [icon: postgres, label: "PostgreSQL: one database per service"]
+  Redis [icon: redis, label: "Redis: rate limits, cache"]
+  OpenSearch [icon: elasticsearch, label: "OpenSearch: product index"]
+  Object Storage [icon: aws-s3, label: "Object storage: KYC docs, images, invoices"]
+}
+
+// ---------------------------------------------------------------- external
+External Providers [icon: globe, color: red] {
+  KYC Provider [icon: id-card, label: "KYC (sandbox.co.in)"]
+  Payment Provider [icon: credit-card, label: "Payment and payout provider"]
+  Courier [icon: truck, label: "Courier aggregator"]
+  Email and SMS [icon: mail]
+  LLM Provider [icon: openai, label: "LLM provider"]
+}
+
+// ---------------------------------------------------------------- request path
+Web App > Load Balancer: HTTPS
+Load Balancer > API Gateway
+API Gateway > Identity, Audit, Catalog, Commerce, Payment, Fulfillment, Search, Recommendation, Trust, Notification, Insights: REST
+API Gateway - Redis: rate limits
+API Gateway --> Identity: JWKS public keys
+
+// ---------------------------------------------------------------- events
+Identity --> Kafka: publish via outbox
+Catalog --> Kafka: publish via outbox
+Commerce --> Kafka: publish via outbox
+Payment --> Kafka: publish via outbox
+Fulfillment --> Kafka: publish via outbox
+Trust --> Kafka: publish via outbox
+Kafka --> Catalog, Commerce, Payment, Fulfillment, Trust: projections
+Kafka --> Search, Recommendation, Notification, Insights, Audit: consume
+
+// ---------------------------------------------------------------- storage
+Services > PostgreSQL: own tables
+Catalog - Redis: cache
+Commerce - Redis: cache
+Recommendation - Redis: cache
+Search > OpenSearch
+Identity > Object Storage
+Catalog > Object Storage
+Payment > Object Storage
+Insights > Object Storage
+
+// ---------------------------------------------------------------- AI and providers
+Recommendation > AI Service: rank and explain real candidates
+AI Service > LLM Provider
+Identity > KYC Provider: GSTIN, PAN, bank, DigiLocker
+Payment > Payment Provider: payments, refunds, payouts
+Fulfillment > Courier: shipments, pickups
+Notification > Email and SMS
+Payment Provider --> API Gateway: webhooks
+Courier --> API Gateway: webhooks

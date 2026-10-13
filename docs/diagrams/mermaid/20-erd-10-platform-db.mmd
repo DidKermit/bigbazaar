@@ -1,0 +1,27 @@
+erDiagram
+  audit_events {
+    bigserial id PK
+    uuid event_id UK
+    varchar event_type
+    varchar source_service
+    uuid actor_id
+    varchar entity_type
+    varchar entity_id
+    uuid correlation_id
+    timestamptz occurred_at
+  }
+  support_tickets {
+    uuid id PK
+    varchar ticket_number UK
+    uuid user_id "logical id"
+    varchar subject
+    varchar status
+  }
+  ticket_messages {
+    bigserial id PK
+    uuid ticket_id FK
+    uuid author_id "logical id"
+    varchar author_role
+    timestamptz created_at
+  }
+  support_tickets ||--o{ ticket_messages : "ticket_id"
