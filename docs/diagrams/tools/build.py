@@ -130,7 +130,8 @@ MERMAID_CONFIG = """{
 def render_all():
     BUILD.mkdir(parents=True, exist_ok=True)
     (BUILD / "mermaid-config.json").write_text(MERMAID_CONFIG)
-    # ELK lays out wide ER diagrams far more compactly than dagre; flowcharts read better with dagre.
+    # ELK lays out wide ER diagrams far more compactly than dagre; most flowcharts read better with dagre.
+    # A flowchart opts in to ELK with a first line of "%% layout: elk".
     (BUILD / "mermaid-config-elk.json").write_text(MERMAID_CONFIG.replace('"theme"', '"layout": "elk", "theme"', 1))
     (BUILD / "puppeteer.json").write_text(
         '{"executablePath": "%s", "args": ["--no-sandbox"]}' % CHROME)
@@ -141,7 +142,9 @@ def render_all():
         if out.exists() and out.stat().st_mtime > src.stat().st_mtime:
             svgs[src.stem] = out.read_text()
             continue
-        config = "mermaid-config-elk.json" if src.read_text().startswith("erDiagram") else "mermaid-config.json"
+        text = src.read_text()
+        elk = text.startswith("erDiagram") or text.startswith("%% layout: elk")
+        config = "mermaid-config-elk.json" if elk else "mermaid-config.json"
         subprocess.run([str(mmdc), "-q", "-i", str(src), "-o", str(out), "-c",
                         str(BUILD / config), "-p", str(BUILD / "puppeteer.json"),
                         "-b", "white"], check=True)
@@ -268,6 +271,8 @@ def build_html(svgs):
         for i, sec in enumerate(group["diagrams"], start=1):
             if sec["file"] == "@columns":
                 body.append(columns_section(f"{n}.{i}", sec))
+            elif sec["file"] == "@text":
+                body.append(text_section(f"{n}.{i}", sec))
             else:
                 body.append(diagram_section(svgs, sec, f"{n}.{i}"))
             toc.append((f"{n}.{i}", sec["title"], sec["id"]))
@@ -305,6 +310,18 @@ def build_html(svgs):
     body.insert(1, toc_html)
 
     return f"<!doctype html><html><head><meta charset='utf-8'><title>BigBazaar Architecture Diagrams</title><style>{CSS}</style></head><body>{''.join(body)}</body></html>"
+
+
+def text_section(number, sec):
+    parts = [f"<section><h2 id='{sec['id']}'>{number} {esc(sec['title'])}</h2>",
+             f"<p class='srs'>From SRS v1.1: {esc(sec['srs'])}</p>", paras(sec["read"])]
+    for head, rows in sec.get("tables", []):
+        parts.append("<table class='grid small'><thead><tr>" + "".join(f"<th>{esc(h)}</th>" for h in head)
+                     + "</tr></thead><tbody>"
+                     + "".join("<tr>" + "".join(f"<td>{md(c)}</td>" for c in r) + "</tr>" for r in rows)
+                     + "</tbody></table>")
+    parts.append("</section>")
+    return "\n".join(parts)
 
 
 def columns_section(number, sec):
@@ -362,6 +379,8 @@ section.cover { page-break-before: auto; height: 170mm; display: flex; flex-dire
 table { border-collapse: collapse; width: 100%; }
 table.grid td, table.grid th { border: 1px solid #dbe4f0; padding: 4pt 6pt; vertical-align: top; text-align: left; }
 table.grid th { background: #eef3f9; }
+table.grid.small { font-size: 8.6pt; margin: 6pt 0 10pt; }
+table.grid.small td, table.grid.small th { padding: 2pt 5pt; }
 .twocol { columns: 2; column-gap: 7mm; }
 .tbl { break-inside: avoid; page-break-inside: avoid; margin-bottom: 6pt; }
 .tbl h4 { margin-top: 0; }

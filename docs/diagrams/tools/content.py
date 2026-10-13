@@ -87,6 +87,70 @@ copies under load and lose one without losing data.
 bad event cannot block the rest and can be inspected later.
 """,
             },
+            {
+                "id": "arch-network", "file": "08-network",
+                "title": "Network diagram (production)",
+                "srs": "12 Security requirements, 15 Deployment, 15.2 Load balancing, 6.3 Availability",
+                "read": """
+Read left to right, from the internet inward. Each box is a network zone and each arrow is a
+connection that a firewall rule allows, labelled with its port. Anything without an arrow is blocked.
+Only the load balancer has a public address. Services sit in a private subnet, databases in a deeper
+one with no internet route at all, and calls out to providers leave through one NAT gateway. Every
+zone is copied across two availability zones (separate data centres). Ports for services not built
+yet are proposed; the built ones (gateway 8080, identity 8081, audit 8091) match the code.
+""",
+                            },
+            {
+                "id": "arch-cloud", "file": "@text",
+                "title": "Recommended cloud setup and firewall rules",
+                "srs": "12 Security requirements, 14 External interfaces, 15 Deployment",
+                "read": """
+**Recommendation: AWS, Mumbai region (ap-south-1).** The storage adapter already defaults to S3 in
+ap-south-1, Indian payment and KYC rules favour keeping customer data in India, and every box in the
+network diagram has a managed AWS service, so the team runs code rather than servers. The diagram
+keeps generic names so it stays true if another cloud is chosen (Azure Central India and GCP
+asia-south1 have the same pieces, but no managed Kafka on Azure).
+
+Three ideas behind the network diagram:
+- **Subnet** is a slice of the private network (written as a CIDR range such as 10.0.16.0/20). Putting
+each tier in its own subnet lets firewall rules say "only the app tier may reach the database".
+- **Defence in depth**: an attacker who gets past the load balancer still cannot reach a database
+directly, and a stolen database password is useless from outside the network.
+- **NAT gateway** lets private machines start connections to the internet (KYC, payments) while
+nothing on the internet can start a connection to them.
+""",
+                "tables": [
+                    (["Diagram box", "AWS service", "Why"], [
+                        ("Private network, subnets, firewall rules", "VPC over 2 availability zones, security groups", "Rules reference groups, not IPs, so scaling never breaks them."),
+                        ("DNS", "Route 53", "Health-checked records."),
+                        ("CDN + WAF", "CloudFront + AWS WAF", "Serves the Angular build from S3 near the user."),
+                        ("Load balancer", "Application Load Balancer + AWS WAF, ACM certificate", "HTTPS ends here; spreads load over gateway replicas."),
+                        ("Gateway, services, AI service", "ECS on Fargate, images in ECR", "Containers without managing servers; two or more tasks per service."),
+                        ("PostgreSQL", "RDS PostgreSQL Multi-AZ", "Automatic standby and backups; one login per service database."),
+                        ("Kafka", "Amazon MSK (3 brokers, TLS)", "Managed Kafka with the same client code."),
+                        ("Redis", "ElastiCache for Redis, TLS", "Rate limits and cache."),
+                        ("OpenSearch", "Amazon OpenSearch Service (3 nodes)", "Same engine the code targets."),
+                        ("Object storage + private endpoint", "S3 + VPC gateway endpoint", "File traffic never leaves AWS's network."),
+                        ("NAT gateway", "NAT gateway in each public subnet", "Outbound calls to providers only."),
+                        ("Monitoring", "Managed Prometheus + Grafana, CloudWatch logs", "Metrics, logs and traces with the correlation id."),
+                        ("VPN endpoint", "AWS Client VPN (or SSM Session Manager)", "Admins reach ops tools without any public SSH."),
+                    ]),
+                    (["From", "To", "Port", "Allowed because"], [
+                        ("Internet", "Load balancer", "443", "The only public entry: browsers and signed webhooks."),
+                        ("Load balancer", "API gateway", "8080", "Gateway checks tokens and routes."),
+                        ("API gateway", "Services", "8081 to 8092", "REST calls the gateway routes."),
+                        ("API gateway, services", "Redis", "6379", "Rate limits and cache."),
+                        ("Recommendation", "AI service", "8000", "Only Recommendation calls the AI."),
+                        ("Each service", "PostgreSQL", "5432", "Each with its own login to its own database."),
+                        ("Services", "Kafka", "9093", "Outbox relays publish, listeners consume."),
+                        ("Search", "OpenSearch", "9200", "Indexing and queries."),
+                        ("Services", "Object storage endpoint", "443", "Documents, images, invoices, reports."),
+                        ("Services, AI service", "NAT gateway → providers", "443", "KYC, payment, courier, SMS, email, LLM."),
+                        ("Monitoring", "Services", "actuator port", "Metrics scraping."),
+                        ("Anything else", "Anything", "none", "Denied by default."),
+                    ]),
+                ],
+            },
         ],
     },
     {
@@ -347,6 +411,11 @@ CHOICES = [
      "No runtime dependency on another service being up; matches the event-driven design."),
     ("Ledger placement", "Inside Payment", "Separate Ledger service",
      "A payment and its ledger entries must commit together (SRS 3.3)."),
+    ("Network layout", "Public, private app, private data and ops subnets over 2 availability zones",
+     "One flat network; everything public behind a firewall",
+     "Only the load balancer is reachable from the internet; databases have no internet route (SRS 12, 15)."),
+    ("Cloud", "AWS ap-south-1 (Mumbai), drawn with generic names", "Azure Central India; GCP asia-south1",
+     "Storage adapter already targets S3 ap-south-1, data stays in India, managed Kafka (MSK) exists."),
     ("Web app", "One Angular app with /shop, /seller, /admin", "Three separate apps",
      "One build and login, shared UI kit; lazy loading keeps each area small."),
     ("Rates", "Commission on the category, fees and TCS/TDS in `rate_configs`, snapshots on order items",
@@ -373,6 +442,7 @@ each service is built; the Flyway migration is the final word, and these diagram
 GLOSSARY = [
     ("ADR", "Architecture decision record: a short note in `docs/adr/` explaining one decision."),
     ("AWB", "Air waybill: the courier's tracking number for a parcel."),
+    ("CIDR", "A way to write a range of network addresses, such as 10.0.16.0/20 (4,096 addresses)."),
     ("Correlation id", "One id that follows a user action through every service and event, for tracing logs."),
     ("DFD", "Data-flow diagram: follows information between people, processes and stores."),
     ("DLT", "Dead-letter topic: where Kafka events go after failing all retries."),
@@ -384,11 +454,16 @@ GLOSSARY = [
     ("JWKS", "JSON Web Key Set: the public keys anyone can use to check our access tokens."),
     ("Logical id", "An id copied from another service's data, with no foreign key behind it."),
     ("Mermaid", "A text language for diagrams, drawn by GitHub and many editors."),
+    ("NAT gateway", "Lets private machines call out to the internet while blocking calls coming in."),
     ("NDR / RTO", "Non-delivery report (a failed delivery attempt) / return to origin (parcel sent back to the seller)."),
     ("Outbox", "A table where a service saves events in the same transaction as its change, for a relay to publish."),
     ("Projection", "A service's read-only copy of another service's data, built from events."),
+    ("Subnet", "A slice of the private network; firewall rules are written between subnets."),
     ("Saga", "A multi-service business process made of local steps, with compensating steps on failure."),
     ("Soft delete", "Marking a row deleted with `deleted_at` instead of removing it."),
+    ("VPC", "Virtual private cloud: the company's own isolated network inside the cloud."),
+    ("WAF", "Web application firewall: blocks common attacks before they reach the app."),
     ("TCS / TDS", "Tax collected at source (GST) / tax deducted at source (section 194-O), withheld from seller payouts."),
     ("TOTP", "Time-based one-time password: the 6-digit code from an authenticator app."),
 ]
+GLOSSARY.sort(key=lambda row: row[0].lower())

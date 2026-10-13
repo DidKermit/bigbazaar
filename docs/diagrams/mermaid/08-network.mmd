@@ -1,0 +1,59 @@
+%% layout: elk (drawn with the ELK engine in the PDF build)
+flowchart LR
+  subgraph NET["Internet"]
+    USR(["Browsers"])
+    HOOK(["Payment and courier<br/>webhooks"])
+  end
+
+  subgraph EDGE["Edge (managed)"]
+    DNS["DNS<br/>bigbazaar.in"]
+    CDN["CDN + WAF<br/>Angular static files"]
+  end
+
+  subgraph PUB["Public subnet 10.0.0.0/20"]
+    LB["Load balancer + WAF<br/>:443 HTTPS<br/>TLS ends here"]
+  end
+
+  subgraph APP["Private app subnet 10.0.16.0/20 · no public IPs"]
+    GW["API gateway ×2<br/>:8080"]
+    SVC["Java services, 2+ replicas each<br/>identity :8081 · audit :8091<br/>catalog :8082 · commerce :8083<br/>payment :8084 · fulfillment :8085<br/>notification :8086 · trust :8087<br/>search :8088 · recommendation :8090<br/>insights :8092"]
+    AI["AI service ×2<br/>:8000"]
+  end
+
+  subgraph DATA["Private data subnet 10.0.32.0/20"]
+    PG[("PostgreSQL<br/>primary + standby<br/>:5432")]
+    KF[("Kafka ×3 brokers<br/>:9093 TLS")]
+    RD[("Redis primary + replica<br/>:6379 TLS")]
+    OS[("OpenSearch ×3<br/>:9200 HTTPS")]
+  end
+
+  subgraph OUT["Leaving the network"]
+    S3E["Private endpoint"]
+    OBJ[("Object storage<br/>docs · images · invoices")]
+    NAT["NAT gateway<br/>outbound only"]
+    EXT(["KYC, payment, payout,<br/>courier, SMS, email, LLM APIs"])
+  end
+
+  subgraph OPS["Ops subnet 10.0.48.0/24"]
+    VPN["VPN endpoint<br/>admins only"]
+    MON["Prometheus · Grafana<br/>logs and traces"]
+  end
+
+  USR -- "443" --> DNS
+  USR -- "443" --> CDN
+  USR -- "443 /api" --> LB
+  HOOK -- "443, signed" --> LB
+  LB -- "8080" --> GW
+  GW -- "808x, 809x" --> SVC
+  SVC -- "8000" --> AI
+  GW -- "6379" --> RD
+  SVC -- "5432, own login" --> PG
+  SVC -- "9093" --> KF
+  SVC -- "6379" --> RD
+  SVC -- "9200" --> OS
+  SVC -- "443" --> S3E --> OBJ
+  SVC -- "443" --> NAT
+  AI -- "443" --> NAT
+  NAT -- "443" --> EXT
+  VPN -.-> MON
+  MON -. "scrape /actuator" .-> SVC
