@@ -1,0 +1,90 @@
+erDiagram
+  payments {
+    uuid id PK
+    uuid order_id UK "logical id"
+    uuid user_id "logical id"
+    numeric amount
+    varchar status
+  }
+  payment_attempts {
+    uuid id PK
+    uuid payment_id FK
+    varchar method
+    varchar status
+  }
+  payment_webhook_events {
+    uuid id PK
+    varchar provider UK
+    varchar provider_event_id UK
+    timestamptz processed_at
+  }
+  refunds {
+    uuid id PK
+    uuid payment_id FK
+    uuid seller_order_id "logical id"
+    numeric amount
+    varchar reason
+    varchar status
+  }
+  ledger_accounts {
+    uuid id PK
+    varchar code UK
+    varchar owner_type
+    uuid owner_id UK "logical id"
+  }
+  ledger_entries {
+    bigserial id PK
+    uuid transaction_id
+    uuid account_id FK
+    numeric debit_amount
+    numeric credit_amount
+    varchar reference_type
+  }
+  rate_configs {
+    uuid id PK
+    varchar rate_type
+    date effective_from
+  }
+  settlements {
+    uuid id PK
+    uuid seller_id UK "logical id"
+    date cycle_start UK
+    date cycle_end
+    numeric net_payable
+    varchar status
+  }
+  settlement_items {
+    uuid id PK
+    uuid settlement_id FK
+    uuid seller_order_id UK "logical id"
+    numeric net_amount
+  }
+  payouts {
+    uuid id PK
+    uuid settlement_id FK, UK
+    uuid seller_id "logical id"
+    numeric amount
+    varchar status
+  }
+  invoices {
+    uuid id PK
+    varchar invoice_number UK
+    uuid seller_order_id UK "logical id"
+    uuid seller_id "logical id"
+    varchar tax_type
+    numeric total_amount
+  }
+  invoice_items {
+    uuid id PK
+    uuid invoice_id FK
+    uuid order_item_id "logical id"
+    varchar hsn_code
+    numeric gst_rate
+  }
+  payments ||--o{ payment_attempts : "payment_id"
+  payments ||--o{ refunds : "payment_id"
+  ledger_accounts ||--o{ ledger_entries : "account_id"
+  ledger_entries |o--o{ ledger_entries : "reverses_entry_id"
+  settlements ||--o{ settlement_items : "settlement_id"
+  settlements ||--o| payouts : "settlement_id"
+  invoices ||--o{ invoice_items : "invoice_id"

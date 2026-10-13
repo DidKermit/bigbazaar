@@ -1,0 +1,26 @@
+erDiagram
+  user_contacts {
+    uuid user_id PK "logical id"
+    varchar email
+    varchar phone
+  }
+  notifications {
+    uuid id PK
+    uuid user_id FK
+    varchar channel
+    varchar template
+    varchar status
+  }
+  delivery_attempts {
+    bigserial id PK
+    uuid notification_id FK
+    varchar outcome
+  }
+  preferences {
+    uuid user_id PK, FK
+    varchar channel PK
+    varchar topic PK
+  }
+  user_contacts ||--o{ notifications : "user_id"
+  notifications ||--o{ delivery_attempts : "notification_id"
+  user_contacts ||--o{ preferences : "user_id"

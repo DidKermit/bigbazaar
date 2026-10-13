@@ -1,0 +1,29 @@
+sequenceDiagram
+  autonumber
+  actor S as Seller
+  participant I as Identity
+  participant W as Verification worker
+  participant KYC as KYC provider
+  participant K as Kafka
+  actor A as Admin
+  S->>I: POST /sellers/applications (GSTIN, PAN, date, bank)
+  I->>I: encrypt KYC inputs, seller PENDING_VERIFICATION
+  I--)K: SellerApplicationSubmitted
+  S->>I: connect DigiLocker
+  I->>I: verification READY, SellerVerificationStarted
+  loop every 2 s, picks due verifications
+    W->>KYC: GSTIN, PAN, penny drop, DigiLocker identity
+    KYC-->>W: results with registry names
+    W->>I: store seller_verification_checks
+  end
+  alt every check passes and names match
+    I->>I: seller APPROVED by SYSTEM, grant SELLER role
+    I--)K: SellerApproved
+  else a check fails (attempt 1 to 3)
+    I-->>S: which check failed and why, correct and retry
+  else still failing or provider down after retries
+    I->>I: seller UNDER_REVIEW
+    A->>I: POST /admin/sellers/{id}/decisions (MFA, reason)
+    I--)K: SellerApproved or SellerRejected
+  end
+  Note over I,K: Catalog builds its verified_seller_projection from these events. Audit records each step.

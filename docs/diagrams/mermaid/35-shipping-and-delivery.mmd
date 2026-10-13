@@ -1,0 +1,33 @@
+sequenceDiagram
+  autonumber
+  actor S as Seller
+  participant Co as Commerce
+  participant K as Kafka
+  participant F as Fulfillment
+  participant CR as Courier
+  participant P as Payment
+  participant T as Trust
+  S->>Co: mark seller order PACKED (before dispatch deadline)
+  Co--)K: OrderPacked
+  K--)F: OrderPacked
+  F->>CR: book shipment
+  CR-->>F: AWB + label
+  F--)K: ShipmentBooked
+  CR->>F: webhook picked up (signed, deduplicated)
+  F--)K: OrderShipped
+  CR->>F: webhooks in transit, out for delivery
+  alt delivered
+    CR->>F: webhook delivered
+    F--)K: OrderDelivered
+    K--)Co: seller order DELIVERED, return window starts
+    K--)P: start return-window hold
+    K--)T: review eligibility opens
+  else delivery failed
+    F--)K: DeliveryFailed, customer picks a new attempt
+    opt too many failures
+      F--)K: ReturnedToOrigin
+      K--)Co: cancel seller order
+      K--)P: refund customer
+    end
+  end
+  Note over Co: Deadline missed without PACKED: Commerce cancels the seller order, OrderCancelled, Payment refunds.

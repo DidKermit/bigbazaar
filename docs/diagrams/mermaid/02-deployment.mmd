@@ -1,0 +1,16 @@
+flowchart LR
+  U["Browsers"] --> LB["Load balancer<br/>HTTPS termination"]
+  LB --> G1["Gateway replica 1"] & G2["Gateway replica 2"]
+  G1 & G2 --> SV["Service replicas<br/>stateless, 2+ each"]
+  SV --> PG[("PostgreSQL<br/>one database and login per service")]
+  SV --> KF[("Kafka<br/>topics + .DLT dead-letter topics")]
+  SV --> RD[("Redis")]
+  SV --> OS[("OpenSearch")]
+  SV --> OB[("Object storage")]
+  G1 & G2 --> RD
+  subgraph Observability
+    PR["Prometheus metrics"]
+    LG["Central logs<br/>with correlation id"]
+    TRC["Traces"]
+  end
+  SV -.-> PR & LG & TRC

@@ -1,0 +1,22 @@
+sequenceDiagram
+  autonumber
+  participant S as Service
+  participant DB as Service database
+  participant R as Outbox relay
+  participant K as Kafka
+  participant C as Consumer
+  participant CDB as Consumer database
+  S->>DB: BEGIN, business change + outbox_events row, COMMIT
+  loop every second
+    R->>DB: read PENDING rows (oldest first)
+    R->>K: publish (key = aggregate id)
+    R->>DB: mark PUBLISHED, or attempts + 1
+  end
+  K->>C: deliver (at least once)
+  C->>CDB: BEGIN, event id in processed_events?
+  alt already processed
+    C->>CDB: skip, COMMIT
+  else new
+    C->>CDB: handle event, insert processed_events, COMMIT
+  end
+  Note over C,K: After retries fail the event goes to topic.DLT with the reason logged

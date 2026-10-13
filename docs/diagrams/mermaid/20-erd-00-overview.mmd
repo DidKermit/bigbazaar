@@ -1,0 +1,31 @@
+flowchart LR
+  identity_db[("identity_db<br/><small>Identity</small>")]
+  catalog_db[("catalog_db<br/><small>Catalog</small>")]
+  commerce_db[("commerce_db<br/><small>Commerce</small>")]
+  payment_db[("payment_db<br/><small>Payment and settlement</small>")]
+  fulfillment_db[("fulfillment_db<br/><small>Fulfillment</small>")]
+  notification_db[("notification_db<br/><small>Notification</small>")]
+  trust_db[("trust_db<br/><small>Trust</small>")]
+  recommendation_db[("recommendation_db<br/><small>Recommendation</small>")]
+  insights_db[("insights_db<br/><small>Insights</small>")]
+  platform_db[("platform_db<br/><small>Audit (and support tickets)</small>")]
+  catalog_db -. "sellers" .-> identity_db
+  commerce_db -. "categories, product_variants, products" .-> catalog_db
+  commerce_db -. "sellers, users" .-> identity_db
+  fulfillment_db -. "product_variants" .-> catalog_db
+  fulfillment_db -. "order_items, orders, seller_orders" .-> commerce_db
+  fulfillment_db -. "sellers, users" .-> identity_db
+  insights_db -. "products" .-> catalog_db
+  insights_db -. "sellers, users" .-> identity_db
+  notification_db -. "users" .-> identity_db
+  payment_db -. "order_items, orders, seller_orders" .-> commerce_db
+  payment_db -. "sellers, users" .-> identity_db
+  platform_db -. "orders" .-> commerce_db
+  platform_db -. "users" .-> identity_db
+  recommendation_db -. "brands, categories, products" .-> catalog_db
+  recommendation_db -. "users" .-> identity_db
+  trust_db -. "product_variants, products" .-> catalog_db
+  trust_db -. "order_items" .-> commerce_db
+  trust_db -. "sellers, users" .-> identity_db
+  classDef built fill:#d8f3dc,stroke:#2d6a4f
+  class identity_db,platform_db built

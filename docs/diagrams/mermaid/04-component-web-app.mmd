@@ -1,0 +1,35 @@
+flowchart TB
+  subgraph App["Angular web app (one build)"]
+    direction TB
+    subgraph Core["core (loaded once)"]
+      AUTH["AuthService<br/>access token in memory · refresh cookie"]
+      INT["HTTP interceptors<br/>bearer token · correlation id · error mapping"]
+      GUARD["Route guards<br/>role check · MFA check"]
+      API["Typed API clients<br/>one per backend service"]
+    end
+    subgraph Shop["/shop (lazy loaded)"]
+      S1["Home and recommendations"]
+      S2["Search and product page"]
+      S3["Compare (up to 4) and AI assistant"]
+      S4["Cart, checkout, payment"]
+      S5["My orders, returns, reviews, tickets"]
+    end
+    subgraph Seller["/seller (lazy, role SELLER)"]
+      L1["Apply and verification status"]
+      L2["Products, images, prices"]
+      L3["Inventory and low-stock"]
+      L4["Seller orders and dispatch"]
+      L5["Dashboard and settlements"]
+    end
+    subgraph Admin["/admin (lazy, role ADMIN + MFA)"]
+      A1["Insights dashboard"]
+      A2["Exceptions queue<br/>sellers · listings · reviews · disputes"]
+      A3["Audit search and system health"]
+      A4["Reports, categories, brands, tickets"]
+    end
+    SHARED["shared UI kit<br/>tables · forms · charts"]
+  end
+  Shop & Seller & Admin --> API
+  Shop & Seller & Admin --> SHARED
+  GUARD --> Seller & Admin
+  API --> INT --> GW["API gateway"]

@@ -1,0 +1,47 @@
+erDiagram
+  delivered_item_projection {
+    uuid order_item_id PK "logical id"
+    uuid user_id "logical id"
+    uuid product_id "logical id"
+    uuid seller_id "logical id"
+    timestamptz delivered_at
+  }
+  reviews {
+    uuid id PK
+    uuid order_item_id FK, UK
+    uuid user_id "logical id"
+    uuid product_id "logical id"
+    smallint rating
+    varchar status
+  }
+  review_flags {
+    uuid id PK
+    uuid review_id FK
+    varchar rule
+    varchar status
+  }
+  review_summaries {
+    uuid product_id PK "logical id"
+    timestamptz generated_at
+  }
+  product_scores {
+    uuid product_id PK "logical id"
+    numeric score
+  }
+  seller_scores {
+    uuid seller_id PK "logical id"
+    numeric score
+    numeric cancellation_rate
+    numeric late_dispatch_rate
+    numeric return_rate
+    boolean flagged
+  }
+  score_history {
+    bigserial id PK
+    varchar subject_type
+    uuid subject_id
+    numeric new_score
+    timestamptz recorded_at
+  }
+  delivered_item_projection ||--o| reviews : "order_item_id"
+  reviews ||--o{ review_flags : "review_id"

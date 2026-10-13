@@ -1,0 +1,41 @@
+flowchart TB
+  P1["1 Manage identity and sellers<br/><small>customer: account · seller: application, KYC<br/>admin: verification exceptions</small>"]
+  P2["2 Manage catalog<br/><small>seller: listings, prices<br/>admin: doubtful listings</small>"]
+  P3["3 Take orders, hold stock<br/><small>customer: cart, checkout<br/>seller: stock, packing</small>"]
+  P4["4 Take payments, settle<br/><small>customer: payment<br/>provider: webhooks</small>"]
+  P5["5 Ship and return<br/><small>customer: returns<br/>courier: tracking</small>"]
+  P6["6 Reviews and trust<br/><small>customer: reviews<br/>admin: flagged reviews</small>"]
+  P7["7 Search and recommend<br/><small>customer: queries, prompts</small>"]
+
+  D1[("D1 identity_db")]
+  D2[("D2 catalog_db")]
+  D3[("D3 commerce_db")]
+  D4[("D4 payment_db")]
+  D5[("D5 fulfillment_db")]
+  D6[("D6 trust_db")]
+  D7[("D7 OpenSearch,<br/>recommendation_db")]
+
+  EV{{"Kafka event stream<br/><small>processes 2 to 7 also read it back to build their projections</small>"}}
+
+  P8["8 Build insights and audit"]
+  P9["9 Notify"]
+  D8[("D8 insights_db, platform_db")]
+  D9[("D9 notification_db")]
+  A(["Admin and seller dashboards"])
+  C(["Customer and seller inboxes"])
+
+  P1 <--> D1
+  P2 <--> D2
+  P3 <--> D3
+  P4 <--> D4
+  P5 <--> D5
+  P6 <--> D6
+  P7 <--> D7
+
+  D1 & D2 & D3 & D4 & D5 & D6 -- "facts via outbox" --> EV
+  EV -- "all events" --> P8
+  EV --> P9
+  P8 <--> D8
+  P9 <--> D9
+  P8 -- "totals, alerts, reports" --> A
+  P9 -- "email, SMS, in-app" --> C

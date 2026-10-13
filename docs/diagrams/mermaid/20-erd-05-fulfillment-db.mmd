@@ -1,0 +1,51 @@
+erDiagram
+  serviceable_pincodes {
+    varchar pincode PK
+    varchar courier PK
+    int estimated_days
+  }
+  order_item_projection {
+    uuid order_item_id PK "logical id"
+    uuid seller_order_id "logical id"
+    uuid user_id "logical id"
+    int return_window_days
+  }
+  shipments {
+    uuid id PK
+    uuid seller_order_id UK "logical id"
+    uuid order_id "logical id"
+    uuid seller_id "logical id"
+    varchar status
+    varchar courier
+    varchar awb_number UK
+  }
+  shipment_events {
+    bigserial id PK
+    uuid shipment_id FK
+    varchar status
+    timestamptz occurred_at
+  }
+  courier_webhook_events {
+    uuid id PK
+    varchar provider UK
+    varchar provider_event_id UK
+    timestamptz processed_at
+  }
+  return_requests {
+    uuid id PK
+    uuid order_item_id FK
+    uuid seller_order_id "logical id"
+    uuid user_id "logical id"
+    varchar reason
+    varchar status
+  }
+  reverse_pickups {
+    uuid id PK
+    uuid return_request_id FK, UK
+    varchar awb_number UK
+    varchar status
+  }
+  shipments ||--o{ shipment_events : "shipment_id"
+  courier_webhook_events |o--o{ shipment_events : "courier_webhook_event_id"
+  order_item_projection ||--o{ return_requests : "order_item_id"
+  return_requests ||--o| reverse_pickups : "return_request_id"

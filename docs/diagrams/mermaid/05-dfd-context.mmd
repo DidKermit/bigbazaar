@@ -1,0 +1,19 @@
+flowchart LR
+  C(["Customer"])
+  S(["Seller"])
+  A(["Admin"])
+  BB(("0<br/>BigBazaar<br/>platform"))
+  KYC(["KYC provider"])
+  PSP(["Payment and<br/>payout provider"])
+  CUR(["Courier"])
+  MSG(["Email and SMS"])
+  LLM(["LLM provider"])
+
+  C <-- "IN: sign-up, searches, cart, orders, payments, returns, reviews, prompts<br/>OUT: products, recommendations, order status, invoices, refunds" --> BB
+  S <-- "IN: application, KYC details, products, stock, packing<br/>OUT: verification result, seller orders, labels, dashboard, settlements" --> BB
+  A <-- "IN: exception decisions with reason, categories, brands, report requests<br/>OUT: insights, alerts, audit log, reports" --> BB
+  BB <-- "OUT: GSTIN, PAN, bank, DigiLocker checks<br/>IN: registry results" --> KYC
+  BB <-- "OUT: payment orders, refunds, payouts<br/>IN: payment webhooks, payout status" --> PSP
+  BB <-- "OUT: shipment and pickup bookings<br/>IN: AWB, labels, tracking webhooks" --> CUR
+  BB -- "OUT: email, SMS codes" --> MSG
+  BB <-- "OUT: prompts with real catalog candidates<br/>IN: filters, explanations, summaries" --> LLM

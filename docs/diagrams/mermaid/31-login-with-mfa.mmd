@@ -1,0 +1,29 @@
+sequenceDiagram
+  autonumber
+  actor U as User
+  participant W as Web app
+  participant G as Gateway
+  participant I as Identity
+  participant DB as identity_db
+  U->>W: email + password
+  W->>G: POST /api/v1/auth/login
+  G->>I: forward (public path, rate limited)
+  I->>DB: load user, check status and lockout
+  I->>I: BCrypt check
+  alt wrong password
+    I->>DB: failed_login_attempts + 1 (lock after the limit)
+    I-->>W: 401 INVALID_CREDENTIALS
+  else MFA is active (always for admins)
+    I->>DB: insert mfa_challenges (hashed token, 5 min)
+    I-->>W: 200 status MFA_REQUIRED + mfaToken
+    U->>W: 6-digit code from authenticator app
+    W->>G: POST /api/v1/auth/mfa/verify
+    G->>I: forward
+    I->>I: TOTP check, reject a reused time step
+    I->>DB: consume challenge, insert refresh_tokens (mfa_verified = true)
+    I-->>W: access token (RS256, 15 min, amr = [pwd, mfa]) + refresh token
+  else no MFA
+    I->>DB: insert refresh_tokens
+    I-->>W: status AUTHENTICATED, access token (amr = [pwd]) + refresh token
+  end
+  Note over W,I: Later, POST /auth/refresh rotates the refresh token. Reusing an old one revokes the whole family.

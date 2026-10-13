@@ -1,0 +1,41 @@
+erDiagram
+  daily_platform_totals {
+    date day PK
+    int orders_count
+    numeric gmv
+  }
+  daily_seller_totals {
+    date day PK
+    uuid seller_id PK "logical id"
+    int orders_count
+    numeric revenue
+  }
+  daily_product_totals {
+    date day PK
+    uuid product_id PK "logical id"
+    uuid seller_id "logical id"
+    int units_sold
+    numeric revenue
+  }
+  seller_action_items {
+    uuid id PK
+    uuid seller_id "logical id"
+    varchar item_type
+    uuid reference_id
+    boolean open
+  }
+  alert_feed {
+    uuid id PK
+    varchar alert_type
+    varchar subject_type
+    uuid subject_id
+    varchar status
+  }
+  report_runs {
+    uuid id PK
+    varchar report_type
+    date period_from
+    date period_to
+    varchar format
+    varchar status
+  }
