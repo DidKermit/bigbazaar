@@ -23,6 +23,7 @@ public enum ErrorCode {
     DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND),
     UPLOAD_NOT_FOUND(HttpStatus.CONFLICT),
     INVALID_DOCUMENT(HttpStatus.UNPROCESSABLE_ENTITY),
+    KYC_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR);
 
     private final HttpStatus status;

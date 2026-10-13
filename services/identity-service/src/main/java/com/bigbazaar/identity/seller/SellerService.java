@@ -5,16 +5,21 @@ import com.bigbazaar.identity.common.BusinessException;
 import com.bigbazaar.identity.common.CorrelationIds;
 import com.bigbazaar.identity.common.ErrorCode;
 import com.bigbazaar.identity.common.IdentityEvents;
+import com.bigbazaar.identity.kyc.KycProvider;
+import com.bigbazaar.identity.mfa.SecretCipher;
 import com.bigbazaar.identity.outbox.OutboxWriter;
 import com.bigbazaar.identity.seller.SellerDtos.SellerApplicationRequest;
 import com.bigbazaar.identity.seller.SellerDtos.SellerDetailResponse;
 import com.bigbazaar.identity.seller.SellerDtos.SellerDocumentResponse;
 import com.bigbazaar.identity.seller.SellerDtos.SellerResponse;
 import com.bigbazaar.identity.seller.SellerDtos.StatusHistoryEntry;
+import com.bigbazaar.identity.seller.SellerDtos.VerificationCheckResponse;
+import com.bigbazaar.identity.seller.SellerDtos.VerificationResponse;
 import com.bigbazaar.identity.user.Role;
 import com.bigbazaar.identity.user.User;
 import com.bigbazaar.identity.user.UserService;
 import java.time.Clock;
+import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,6 +27,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.json.JsonMapper;
 
 @Service
 public class SellerService {
@@ -32,17 +38,28 @@ public class SellerService {
     private final SellerStatusHistoryRepository history;
     private final SellerDocumentRepository documents;
     private final UserService userService;
+    private final SellerVerificationRepository verifications;
+    private final SellerVerificationCheckRepository checks;
     private final OutboxWriter outbox;
+    private final SecretCipher cipher;
+    private final JsonMapper json;
+    private final KycProvider kycProvider;
     private final Clock clock;
 
     public SellerService(SellerRepository sellers, SellerStatusHistoryRepository history,
-                         SellerDocumentRepository documents, UserService userService, OutboxWriter outbox,
-                         Clock clock) {
+                         SellerDocumentRepository documents, SellerVerificationRepository verifications,
+                         SellerVerificationCheckRepository checks, UserService userService, OutboxWriter outbox,
+                         SecretCipher cipher, JsonMapper json, KycProvider kycProvider, Clock clock) {
         this.sellers = sellers;
         this.history = history;
         this.documents = documents;
+        this.verifications = verifications;
+        this.checks = checks;
         this.userService = userService;
         this.outbox = outbox;
+        this.cipher = cipher;
+        this.json = json;
+        this.kycProvider = kycProvider;
         this.clock = clock;
     }
 
@@ -60,9 +77,41 @@ public class SellerService {
             from = seller.getStatus();
             seller.reapply(details);
         }
+        var inputs = new KycInputs(request.bankAccountNumber(), request.panDate());
+        seller.setKycInputs(request.bankIfsc(), KycInputs.last4(request.bankAccountNumber()),
+                inputs.seal(cipher, json, seller.getId()));
+        startVerification(seller);
         recordTransition(seller, from, "Application submitted", userId,
                 IdentityEvents.SELLER_APPLICATION_SUBMITTED);
         return SellerResponse.from(seller);
+    }
+
+    /** Each application gets a fresh automatic verification; an older open one no longer applies. */
+    private void startVerification(Seller seller) {
+        verifications.findBySellerIdAndStatusIn(seller.getId(), List.of(SellerVerification.Status.AWAITING_IDENTITY,
+                        SellerVerification.Status.READY, SellerVerification.Status.RUNNING))
+                .forEach(open -> open.supersede(clock.instant()));
+        verifications.save(new SellerVerification(seller.getId(), kycProvider.name(), clock.instant()));
+    }
+
+    /**
+     * A decision made by automatic verification (ADR 0007). Only applies while the application is
+     * still waiting; if an admin already acted, their decision stands.
+     */
+    @Transactional
+    public boolean decideAutomatically(UUID sellerId, SellerDecision decision, String reason) {
+        Seller seller = findById(sellerId);
+        if (seller.getStatus() != SellerStatus.PENDING_VERIFICATION) {
+            log.info("Automatic decision skipped sellerId={} status={}", sellerId, seller.getStatus());
+            return false;
+        }
+        SellerStatus from = seller.decide(decision);
+        if (seller.getStatus() == SellerStatus.APPROVED) {
+            userService.get(seller.getUserId()).grantRole(Role.SELLER);
+        }
+        recordTransition(seller, from, reason, IdentityEvents.SYSTEM_ACTOR_ID, decision.eventType());
+        log.info("Automatic seller decision sellerId={} decision={}", sellerId, decision);
+        return true;
     }
 
     @Transactional(readOnly = true)
@@ -111,11 +160,29 @@ public class SellerService {
     }
 
     private SellerDetailResponse detail(Seller seller) {
-        return new SellerDetailResponse(SellerResponse.from(seller),
+        return new SellerDetailResponse(SellerResponse.from(seller), verification(seller.getId()),
                 documents.findBySellerIdOrderByCreatedAtAsc(seller.getId()).stream()
                         .map(SellerDocumentResponse::from).toList(),
                 history.findBySellerIdOrderByChangedAtAscIdAsc(seller.getId()).stream()
                         .map(StatusHistoryEntry::from).toList());
+    }
+
+    VerificationResponse verification(UUID sellerId) {
+        return verifications.findFirstBySellerIdOrderByCreatedAtDesc(sellerId)
+                .map(v -> new VerificationResponse(v.getId(), v.getStatus(), v.getProvider(), nextStep(v),
+                        v.getAttempts(), v.getOutcomeSummary(), v.getCreatedAt(), v.getCompletedAt(),
+                        checks.findByVerificationIdOrderByIdAsc(v.getId()).stream()
+                                .map(VerificationCheckResponse::from).toList()))
+                .orElse(null);
+    }
+
+    private static String nextStep(SellerVerification v) {
+        return switch (v.getStatus()) {
+            case AWAITING_IDENTITY -> "CONNECT_DIGILOCKER";
+            case READY, RUNNING -> "WAIT";
+            case NEEDS_REVIEW -> "WAIT_FOR_ADMIN";
+            case PASSED, SUPERSEDED -> "NONE";
+        };
     }
 
     Seller findByUser(UUID userId) {

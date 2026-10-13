@@ -92,3 +92,4 @@ from `.env`, delete the printed `.pub.pem` file and restart identity-service aga
 - [ADR 0004: Multi-factor authentication](docs/adr/0004-multi-factor-authentication.md)
 - [ADR 0005: KYC documents in object storage](docs/adr/0005-object-storage-for-documents.md)
 - [ADR 0006: Audit service as the first event consumer](docs/adr/0006-audit-service.md)
+- [ADR 0007: Automatic seller verification](docs/adr/0007-automatic-seller-verification.md)

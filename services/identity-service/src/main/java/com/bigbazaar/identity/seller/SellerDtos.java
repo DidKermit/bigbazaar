@@ -21,7 +21,13 @@ public final class SellerDtos {
             // GSTIN format; optional for small sellers below the registration threshold.
             @Pattern(regexp = "^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$", message = "must be a valid GSTIN")
             String taxId,
-            @NotBlank @Size(max = 500) String pickupAddress) {
+            @NotBlank @Size(max = 500) String pickupAddress,
+            // For automatic verification (ADR 0007). Without them the application goes to an admin.
+            @Pattern(regexp = "^(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[0-2])/(19|20)[0-9]{2}$",
+                    message = "must be DD/MM/YYYY")
+            String panDate,
+            @Pattern(regexp = "^[0-9]{6,18}$", message = "must be 6-18 digits") String bankAccountNumber,
+            @Pattern(regexp = "^[A-Z]{4}0[A-Z0-9]{6}$", message = "must be a valid IFSC") String bankIfsc) {
     }
 
     public record DocumentUploadRequest(
@@ -49,14 +55,36 @@ public final class SellerDtos {
             String taxId,
             String pickupAddress,
             SellerStatus status,
+            String bankIfsc,
+            String bankAccountLast4,
             Instant createdAt,
             Instant updatedAt) {
 
         static SellerResponse from(Seller seller) {
             return new SellerResponse(seller.getId(), seller.getUserId(), seller.getBusinessName(),
                     seller.getBusinessEmail(), seller.getBusinessPhone(), seller.getTaxId(),
-                    seller.getPickupAddress(), seller.getStatus(), seller.getCreatedAt(), seller.getUpdatedAt());
+                    seller.getPickupAddress(), seller.getStatus(), seller.getBankIfsc(),
+                    seller.getBankAccountLast4(), seller.getCreatedAt(), seller.getUpdatedAt());
         }
+    }
+
+    public record VerificationCheckResponse(SellerVerificationCheck.Type type, SellerVerificationCheck.Outcome outcome,
+                                            String detail, String registryName, java.math.BigDecimal matchScore,
+                                            Instant checkedAt) {
+        static VerificationCheckResponse from(SellerVerificationCheck c) {
+            return new VerificationCheckResponse(c.getType(), c.getOutcome(), c.getDetail(), c.getRegistryName(),
+                    c.getMatchScore(), c.getCheckedAt());
+        }
+    }
+
+    /** {@code nextStep} tells the seller's app what to do: connect DigiLocker, wait, or nothing. */
+    public record VerificationResponse(UUID id, SellerVerification.Status status, String provider, String nextStep,
+                                       int attempts, String outcomeSummary, Instant createdAt, Instant completedAt,
+                                       List<VerificationCheckResponse> checks) {
+    }
+
+    /** Open the provider's DigiLocker SDK with {@code sessionId}, then call {@code .../identity/complete}. */
+    public record IdentitySessionResponse(UUID verificationId, String provider, String sessionId) {
     }
 
     public record SellerDocumentResponse(UUID id, String documentType, String status, String contentType,
@@ -85,8 +113,8 @@ public final class SellerDtos {
         }
     }
 
-    public record SellerDetailResponse(SellerResponse seller, List<SellerDocumentResponse> documents,
-                                       List<StatusHistoryEntry> history) {
+    public record SellerDetailResponse(SellerResponse seller, VerificationResponse verification,
+                                       List<SellerDocumentResponse> documents, List<StatusHistoryEntry> history) {
     }
 
     private SellerDtos() {

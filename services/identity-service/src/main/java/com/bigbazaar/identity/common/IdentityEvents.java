@@ -20,6 +20,10 @@ public final class IdentityEvents {
     public static final String SELLER_REJECTED = "SellerRejected";
     public static final String SELLER_SUSPENDED = "SellerSuspended";
     public static final String SELLER_REINSTATED = "SellerReinstated";
+    public static final String SELLER_VERIFICATION_COMPLETED = "SellerVerificationCompleted";
+
+    /** actorId on decisions made by automatic seller verification rather than a person. */
+    public static final UUID SYSTEM_ACTOR_ID = UUID.fromString("00000000-0000-0000-0000-00000000a070");
 
     public record UserRegistered(UUID userId, String name, String email, List<String> roles, Instant registeredAt) {
     }
@@ -36,6 +40,14 @@ public final class IdentityEvents {
 
     public record SellerStatusChanged(UUID sellerId, UUID userId, String businessName, String fromStatus,
                                       String toStatus, String reason, UUID actorId) {
+    }
+
+    /** Outcomes only: no identifiers or registry names leave identity-service. */
+    public record SellerVerificationCompleted(UUID sellerId, UUID verificationId, String provider, String outcome,
+                                              List<CheckOutcome> checks, String reason, UUID actorId) {
+    }
+
+    public record CheckOutcome(String type, String outcome) {
     }
 
     private IdentityEvents() {

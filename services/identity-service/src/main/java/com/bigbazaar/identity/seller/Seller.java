@@ -41,6 +41,16 @@ public class Seller extends Auditable {
     @Column(nullable = false)
     private SellerStatus status;
 
+    @Column(name = "bank_ifsc")
+    private String bankIfsc;
+
+    @Column(name = "bank_account_last4")
+    private String bankAccountLast4;
+
+    /** Encrypted {@link KycInputs}; see {@link SellerVerificationService}. */
+    @Column(name = "kyc_inputs_enc")
+    private String kycInputsEncrypted;
+
     @Version
     private long version;
 
@@ -84,6 +94,12 @@ public class Seller extends Auditable {
         this.pickupAddress = details.pickupAddress();
     }
 
+    void setKycInputs(String ifsc, String accountLast4, String encrypted) {
+        this.bankIfsc = ifsc;
+        this.bankAccountLast4 = accountLast4;
+        this.kycInputsEncrypted = encrypted;
+    }
+
     record ApplicationDetails(String businessName, String businessEmail, String businessPhone, String taxId,
                               String pickupAddress) {
     }
@@ -118,5 +134,17 @@ public class Seller extends Auditable {
 
     public SellerStatus getStatus() {
         return status;
+    }
+
+    public String getBankIfsc() {
+        return bankIfsc;
+    }
+
+    public String getBankAccountLast4() {
+        return bankAccountLast4;
+    }
+
+    String getKycInputsEncrypted() {
+        return kycInputsEncrypted;
     }
 }

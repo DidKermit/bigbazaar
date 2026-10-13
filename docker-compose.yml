@@ -90,6 +90,11 @@ services:
       JWT_PREVIOUS_PUBLIC_KEYS: ${JWT_PREVIOUS_PUBLIC_KEYS:-}
       MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?run infra/keys/generate-dev-keys.sh and set MFA_ENCRYPTION_KEY in .env}
       # KYC documents: local disk in development, S3 (or any S3-compatible store) when STORAGE_PROVIDER=s3.
+      # Seller verification: mock needs nothing; sandbox needs keys from console.sandbox.co.in.
+      KYC_PROVIDER: ${KYC_PROVIDER:-mock}
+      SANDBOX_API_KEY: ${SANDBOX_API_KEY:-}
+      SANDBOX_API_SECRET: ${SANDBOX_API_SECRET:-}
+      SANDBOX_BASE_URL: ${SANDBOX_BASE_URL:-https://test-api.sandbox.co.in}
       STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
       STORAGE_LOCAL_DIR: /data/uploads
       STORAGE_PUBLIC_BASE_URL: ${STORAGE_PUBLIC_BASE_URL:-http://localhost:8080}

@@ -45,6 +45,13 @@ public class GlobalExceptionHandler {
         return respond(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED.name(), "Malformed request.", List.of());
     }
 
+    @ExceptionHandler(com.bigbazaar.identity.kyc.KycUnavailableException.class)
+    ResponseEntity<ApiError> kycUnavailable(com.bigbazaar.identity.kyc.KycUnavailableException e) {
+        log.warn("KYC provider unavailable: {}", e.getMessage());
+        return respond(HttpStatus.SERVICE_UNAVAILABLE, ErrorCode.KYC_UNAVAILABLE.name(),
+                "The verification service is unavailable. Please try again in a few minutes.", List.of());
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
     ResponseEntity<ApiError> accessDenied(AccessDeniedException e) {
         return respond(HttpStatus.FORBIDDEN, ErrorCode.ACCESS_DENIED.name(),

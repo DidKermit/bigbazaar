@@ -9,6 +9,9 @@ import com.bigbazaar.identity.seller.SellerDtos.DocumentUploadResponse;
 import com.bigbazaar.identity.seller.SellerDtos.SellerDocumentResponse;
 import com.bigbazaar.identity.seller.SellerDtos.SellerResponse;
 import com.bigbazaar.identity.seller.SellerService;
+import com.bigbazaar.identity.seller.SellerVerificationService;
+import com.bigbazaar.identity.seller.SellerDtos.IdentitySessionResponse;
+import com.bigbazaar.identity.seller.SellerDtos.VerificationResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -31,10 +34,13 @@ public class SellerController {
 
     private final SellerService sellerService;
     private final SellerDocumentService documentService;
+    private final SellerVerificationService verificationService;
 
-    public SellerController(SellerService sellerService, SellerDocumentService documentService) {
+    public SellerController(SellerService sellerService, SellerDocumentService documentService,
+                            SellerVerificationService verificationService) {
         this.sellerService = sellerService;
         this.documentService = documentService;
+        this.verificationService = verificationService;
     }
 
     @PostMapping("/applications")
@@ -48,6 +54,19 @@ public class SellerController {
     @Operation(summary = "My seller application, documents and status history")
     public SellerDetailResponse mine(@AuthenticationPrincipal Jwt jwt) {
         return sellerService.mine(CurrentUser.id(jwt));
+    }
+
+    @PostMapping("/me/verification/identity")
+    @Operation(summary = "Start DigiLocker: returns the session ID the app opens with the provider's SDK")
+    public IdentitySessionResponse startIdentity(@AuthenticationPrincipal Jwt jwt) {
+        return verificationService.startIdentity(CurrentUser.id(jwt));
+    }
+
+    @PostMapping("/me/verification/identity/complete")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    @Operation(summary = "DigiLocker finished: run the automatic checks (results appear on GET /sellers/me)")
+    public VerificationResponse completeIdentity(@AuthenticationPrincipal Jwt jwt) {
+        return verificationService.completeIdentity(CurrentUser.id(jwt));
     }
 
     @PostMapping("/me/documents/uploads")

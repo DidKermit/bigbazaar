@@ -51,6 +51,17 @@ bigbazaar:
     challenge-ttl: 5m
     max-challenge-attempts: 5
     recovery-code-count: 10
+  kyc:
+    # mock: built-in test registry (no keys). sandbox: sandbox.co.in, see ADR 0007.
+    provider: ${KYC_PROVIDER:mock}
+    name-match-score: 0.8
+    max-attempts: 5
+    retry-delay: 1m
+    poll-interval: 2s
+    sandbox:
+      base-url: ${SANDBOX_BASE_URL:https://test-api.sandbox.co.in}
+      api-key: ${SANDBOX_API_KEY:}
+      api-secret: ${SANDBOX_API_SECRET:}
   storage:
     provider: ${STORAGE_PROVIDER:local}
     cleanup-interval: 1h

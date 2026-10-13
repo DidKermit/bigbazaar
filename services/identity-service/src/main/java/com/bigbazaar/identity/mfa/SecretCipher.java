@@ -11,12 +11,12 @@ import javax.crypto.spec.SecretKeySpec;
 import org.springframework.stereotype.Component;
 
 /**
- * AES-256-GCM for TOTP secrets. Unlike passwords they must be recoverable to verify codes, so they
+ * AES-256-GCM for TOTP secrets and seller KYC inputs. Unlike passwords they must be recoverable to verify codes, so they
  * are encrypted, not hashed. Output is {@code v1:base64(iv || ciphertext+tag)}; the prefix leaves room
  * for key rotation.
  */
 @Component
-class SecretCipher {
+public class SecretCipher {
 
     private static final String VERSION = "v1:";
     private static final int IV_BYTES = 12;
@@ -29,7 +29,7 @@ class SecretCipher {
         this.key = new SecretKeySpec(properties.encryptionKeyBytes(), "AES");
     }
 
-    String encrypt(byte[] plaintext, String associatedData) {
+    public String encrypt(byte[] plaintext, String associatedData) {
         try {
             byte[] iv = new byte[IV_BYTES];
             RANDOM.nextBytes(iv);
@@ -45,7 +45,7 @@ class SecretCipher {
     }
 
     /** {@code associatedData} binds the ciphertext to its owner, so rows can't be swapped between users. */
-    byte[] decrypt(String stored, String associatedData) {
+    public byte[] decrypt(String stored, String associatedData) {
         if (!stored.startsWith(VERSION)) {
             throw new IllegalStateException("Unknown secret format");
         }
