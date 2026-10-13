@@ -2,7 +2,7 @@
 
 AI-powered, event-driven, multi-vendor marketplace. Built incrementally as coarse-grained Spring Boot
 microservices that talk over REST for commands and queries and Kafka for business facts. Each service
-owns its own PostgreSQL database. Requirements live in the SRS (v1.0, 17 July 2026).
+owns its own PostgreSQL database. Requirements live in the SRS, now v1.1 (13 Oct 2026): see [`docs/srs/`](docs/srs/).
 
 ## Status
 

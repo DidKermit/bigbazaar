@@ -13,9 +13,12 @@
 | search-service | 4 | 8087 | OpenSearch | Planned |
 | recommendation-service | 4 | 8088 | recommendation_db | Planned |
 | ai-service (Python FastAPI) | 4 | 8090 | optional ai logs | Planned |
+| fulfillment-service | 3 | 8089 | fulfillment_db | Planned (SRS v1.1) |
+| insights-service | 4 | 8092 | insights_db | Planned (SRS v1.1) |
 
-The local PostgreSQL init script already creates every database and its login, so a new service only
-needs its module, Flyway migrations, a gateway route and a compose entry.
+The local PostgreSQL init script already creates every v1.0 database and its login, so a new service only
+needs its module, Flyway migrations, a gateway route and a compose entry. `fulfillment_db` and `insights_db`
+(added in SRS v1.1) get added to the init script when those services are built.
 
 ## Definition of done for a service (SRS 7.1)
 
