@@ -16,6 +16,7 @@
 |---|---|
 | `mermaid/*.mmd` | Diagram sources. GitHub renders them inside a ```` ```mermaid ```` fence; mermaid.live edits them. |
 | `mermaid/20-erd-*.mmd` | **Generated** from `tools/schema.py`. Edit the schema, not these files. |
+| `eraser/system-design.eraser` | The system design as Eraser diagram-as-code. Paste into eraser.io: new diagram, Diagram as code, Cloud architecture. |
 | `tools/schema.py` | Every table and column of the ten service databases, marked built or planned. |
 | `tools/content.py` | The explanations printed around each diagram. |
 | `tools/build.py` | Generates the ERDs, renders every diagram and prints the PDF. |
